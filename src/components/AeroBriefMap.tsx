@@ -2,16 +2,18 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import Map, { Source, Layer, Marker, MapRef, Popup } from "react-map-gl/maplibre";
+import { Plane } from "lucide-react";
 import { motion } from "framer-motion";
 import { springs } from "@/lib/springs";
 import "maplibre-gl/dist/maplibre-gl.css";
 
-interface MarkerData {
+export interface MarkerData {
   icao: string;
-  coordinates: [number, number];
-  flightCategory: string;
+  coordinates: [number, number]; // [longitude, latitude]
+  flightCategory: "VFR" | "MVFR" | "IFR" | "LIFR";
   isActive: boolean;
   isAlternate?: boolean;
+  metar?: any;
 }
 
 interface Props {
@@ -165,8 +167,8 @@ export default function AeroBriefMap({
   // Radar Zoom Enforcement
   useEffect(() => {
     if (showRadar && mapRef.current && mapLoaded) {
-      if (mapRef.current.getZoom() > 7) {
-        mapRef.current.flyTo({ zoom: 7, duration: 800 });
+      if (mapRef.current.getZoom() > 14) {
+        mapRef.current.flyTo({ zoom: 14, duration: 1000 });
       }
     }
   }, [showRadar, mapLoaded]);
@@ -210,8 +212,20 @@ export default function AeroBriefMap({
     
     const lon = p1[0] + (p2[0] - p1[0]) * segmentProgress;
     const lat = p1[1] + (p2[1] - p1[1]) * segmentProgress;
+    
+    // Bearing calculation for rotation
+    const toRad = Math.PI / 180;
+    const toDeg = 180 / Math.PI;
+    const dLon = (p2[0] - p1[0]) * toRad;
+    const lat1 = p1[1] * toRad;
+    const lat2 = p2[1] * toRad;
+    const y = Math.sin(dLon) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+    const bearing = Math.atan2(y, x) * toDeg;
+    
     return {
       type: "Feature" as const,
+      properties: { bearing },
       geometry: { type: "Point" as const, coordinates: [lon, lat] },
     };
   }, [routeProgress, markers, routeLine]);
@@ -303,32 +317,40 @@ export default function AeroBriefMap({
         {routeLine && (
           <Source id="route" type="geojson" data={routeLine}>
             <Layer
-              id="route-line"
+              id="route-line-main"
               type="line"
+              filter={["!=", ["get", "type"], "alternate"]}
               paint={{
-                "line-color": ["match", ["get", "type"], "alternate", "#eb5757", "#555"],
-                "line-width": ["match", ["get", "type"], "alternate", 1.5, 2],
-                "line-opacity": ["match", ["get", "type"], "alternate", 0.8, 0.5],
-                "line-dasharray": ["match", ["get", "type"], "alternate", ["literal", [4, 4]], ["literal", [2, 3]]],
+                "line-color": "#555",
+                "line-width": 2,
+                "line-opacity": 0.5,
+                "line-dasharray": [2, 3],
+              }}
+            />
+            <Layer
+              id="route-line-alt"
+              type="line"
+              filter={["==", ["get", "type"], "alternate"]}
+              paint={{
+                "line-color": "#eb5757",
+                "line-width": 1.5,
+                "line-opacity": 0.8,
+                "line-dasharray": [4, 4],
               }}
             />
           </Source>
         )}
 
-        {/* Animated Flight Path Point */}
+        {/* Animated plane marker */}
         {movingPoint && (
-          <Source id="moving-point" type="geojson" data={movingPoint}>
-            <Layer
-              id="moving-point-layer"
-              type="circle"
-              paint={{
-                "circle-radius": 4.5,
-                "circle-color": "#fbbc05",
-                "circle-stroke-width": 1.5,
-                "circle-stroke-color": "#111",
-              }}
-            />
-          </Source>
+          <Marker
+            longitude={movingPoint.geometry.coordinates[0]}
+            latitude={movingPoint.geometry.coordinates[1]}
+            rotation={movingPoint.properties.bearing - 45}
+            anchor="center"
+          >
+            <Plane size={18} fill="#fbbc05" color="#fbbc05" strokeWidth={1} />
+          </Marker>
         )}
 
         {/* SIGMETs */}
@@ -411,6 +433,60 @@ export default function AeroBriefMap({
           );
         })}
 
+        {/* Airport Click Popup */}
+        {popupAirport && markers.find(m => m.icao === popupAirport) && (() => {
+          const m = markers.find(m => m.icao === popupAirport)!;
+          return (
+            <Popup
+              longitude={m.coordinates[0]}
+              latitude={m.coordinates[1]}
+              anchor="bottom"
+              offset={[0, -20]}
+              closeOnClick={false}
+              onClose={() => setPopupAirport(null)}
+              className="z-50"
+            >
+              <div className="bg-[#1a1a1a] text-white p-3 rounded-lg shadow-2xl border border-[#333] min-w-[140px] text-center">
+                <div className="font-bold text-[14px] tracking-widest mb-1">{m.icao}</div>
+                <div 
+                  className="text-[10px] uppercase tracking-widest px-2 py-1 rounded inline-block font-bold mb-3"
+                  style={{ backgroundColor: `${getCategoryColor(m.flightCategory)}20`, color: getCategoryColor(m.flightCategory) }}
+                >
+                  {m.flightCategory}
+                </div>
+                {m.metar && (
+                  <div className="flex flex-col gap-1.5 text-[11px] font-mono text-[#aaa]">
+                    {m.metar.wind?.speed != null && (
+                      <div className="flex justify-between gap-4">
+                        <span className="text-[#666]">WIND</span>
+                        <span>{m.metar.wind.degrees ? m.metar.wind.degrees.toString().padStart(3, '0') + '°' : 'VRB'}@{m.metar.wind.speed}kt{m.metar.wind.gust ? `G${m.metar.wind.gust}` : ''}</span>
+                      </div>
+                    )}
+                    {m.metar.visibility != null && (
+                      <div className="flex justify-between gap-4">
+                        <span className="text-[#666]">VIS</span>
+                        <span>{m.metar.visibility} SM</span>
+                      </div>
+                    )}
+                    {m.metar.temp != null && (
+                      <div className="flex justify-between gap-4">
+                        <span className="text-[#666]">TEMP</span>
+                        <span>{m.metar.temp}°C / {m.metar.dewpoint ?? '-'}°C</span>
+                      </div>
+                    )}
+                    {m.metar.altimeter != null && (
+                      <div className="flex justify-between gap-4">
+                        <span className="text-[#666]">ALTIM</span>
+                        <span>{m.metar.altimeter.toFixed(2)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </Popup>
+          );
+        })()}
+
         {/* Hazard Popup */}
         {hoverInfo && (
           <Popup
@@ -434,11 +510,11 @@ export default function AeroBriefMap({
       </Map>
 
       {/* Radar zoom warning */}
-      {showRadar && currentZoom > 7.5 && (
+      {showRadar && currentZoom > 14 && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="absolute top-16 left-1/2 -translate-x-1/2 z-10 pointer-events-none"
+          className="absolute top-16 left-1/2 -translate-x-1/2 z-20 pointer-events-none"
         >
           <div className="bg-[#e09145]/90 text-[#1a1007] text-[10px] font-bold tracking-[0.15em] px-4 py-2 rounded-full shadow-lg backdrop-blur-md border border-[#1a1007]/20">
             RADAR LOSES RESOLUTION: ZOOM OUT

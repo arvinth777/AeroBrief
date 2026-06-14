@@ -31,12 +31,25 @@ export interface ParsedTaf {
   blocks: TafBlock[];
 }
 
+export interface WindsAloftLevel {
+  altitude: number; // feet
+  direction: number | null; // degrees
+  speed: number; // knots
+  temp: number | null; // Celsius
+}
+
+export interface WindsAloft {
+  station: string;
+  levels: WindsAloftLevel[];
+}
+
 export interface AirportBriefing {
   icao: string;
   name: string;
   coordinates: [number, number];
   metar: MetarData | null;
   parsedTaf: ParsedTaf | null;
+  windsAloft: WindsAloft | null;
 }
 
 export interface BriefingResponse {
@@ -204,13 +217,89 @@ function parseTafFromAwc(t: AwcTaf): ParsedTaf {
   return { raw: t.rawTAF, blocks };
 }
 
+/* ── Winds Aloft Parser ────────────────────────────────────────────── */
+function decodeWindTemp(val: string): WindsAloftLevel | null {
+  if (!val || val.length < 4) return null;
+  const dd = parseInt(val.slice(0, 2), 10);
+  const ss = parseInt(val.slice(2, 4), 10);
+  
+  if (dd === 99 && ss === 0) {
+    const tStr = val.slice(4);
+    let temp = null;
+    if (tStr) {
+      if (tStr.startsWith('+') || tStr.startsWith('-')) temp = parseInt(tStr, 10);
+      else temp = -parseInt(tStr, 10);
+    }
+    return { altitude: 0, direction: null, speed: 0, temp }; // alt filled by parent
+  }
+  
+  let dir = dd * 10;
+  let speed = ss;
+  if (dd >= 51 && dd <= 86) {
+    dir = (dd - 50) * 10;
+    speed += 100;
+  }
+  
+  let temp: number | null = null;
+  if (val.length > 4) {
+    const tStr = val.slice(4);
+    if (tStr.startsWith('+') || tStr.startsWith('-')) {
+      temp = parseInt(tStr, 10);
+    } else {
+      temp = -parseInt(tStr, 10);
+    }
+  }
+  return { altitude: 0, direction: dir, speed, temp };
+}
+
+function parseWindsAloft(rawFd: string): Record<string, WindsAloft> {
+  const lines = rawFd.trim().split('\n');
+  const result: Record<string, WindsAloft> = {};
+  
+  const cols = [
+    { alt: 3000, start: 4, end: 9 },
+    { alt: 6000, start: 9, end: 17 },
+    { alt: 9000, start: 17, end: 25 },
+    { alt: 12000, start: 25, end: 33 },
+    { alt: 18000, start: 33, end: 41 },
+    { alt: 24000, start: 41, end: 49 },
+    { alt: 30000, start: 49, end: 56 },
+    { alt: 34000, start: 56, end: 63 },
+    { alt: 39000, start: 63, end: 70 }
+  ];
+
+  for (const line of lines) {
+    if (line.length < 10 || line.startsWith('FT ') || line.startsWith('FD') || line.startsWith('DATA') || line.startsWith('VALID')) continue;
+    const stn = line.slice(0, 3).trim();
+    if (!stn || stn.length < 3) continue;
+    
+    const levels: WindsAloftLevel[] = [];
+    for (const c of cols) {
+      if (line.length < c.end) continue;
+      const val = line.slice(c.start, c.end).trim();
+      if (val) {
+        const decoded = decodeWindTemp(val);
+        if (decoded) {
+          decoded.altitude = c.alt;
+          levels.push(decoded);
+        }
+      }
+    }
+    if (levels.length > 0) {
+      result[stn] = { station: stn, levels };
+    }
+  }
+  
+  return result;
+}
+
 /* ── Main Briefing Service ─────────────────────────────────────────── */
 export async function getBriefing(airports: string[]): Promise<BriefingResponse> {
   const partialFailures: string[] = [];
   const bbox = getBoundingBox(airports);
 
   // Parallel fan-out
-  const [metarResult, tafResult, pirepResult, sigmetResult] = await Promise.allSettled([
+  const [metarResult, tafResult, pirepResult, sigmetResult, windResult] = await Promise.allSettled([
     awcGet("/metar", { ids: airports.join(","), format: "json", hours: "3" }),
     awcGet("/taf", { ids: airports.join(","), format: "json", time: "valid" }),
     bbox
@@ -226,6 +315,7 @@ export async function getBriefing(airports: string[]): Promise<BriefingResponse>
           format: "json",
         })
       : Promise.resolve([]),
+    awcGet("/windtemp", { region: "all", fcst: "06" }, { accept: "text/plain" }),
   ]);
 
   // Index METARs by ICAO
@@ -266,6 +356,14 @@ export async function getBriefing(airports: string[]): Promise<BriefingResponse>
       ? sigmetResult.value : [];
   if (sigmetResult.status === "rejected") partialFailures.push("SIGMET");
 
+  let windsAloftMap: Record<string, WindsAloft> = {};
+  if (windResult.status === "fulfilled" && typeof windResult.value === "string") {
+    windsAloftMap = parseWindsAloft(windResult.value);
+  } else {
+    partialFailures.push("WINDTEMP");
+    console.error("[AWC] WINDTEMP fetch failed:", windResult.status === "rejected" ? windResult.reason : "Invalid response type");
+  }
+
   // Assemble per-airport briefings
   const airportBriefings: Record<string, AirportBriefing> = {};
 
@@ -288,6 +386,7 @@ export async function getBriefing(airports: string[]): Promise<BriefingResponse>
       coordinates: coords,
       metar: awcMetar ? parseMetarFromAwc(awcMetar) : null,
       parsedTaf: awcTaf ? parseTafFromAwc(awcTaf) : null,
+      windsAloft: windsAloftMap[icao.slice(1)] || null,
     };
   }
 

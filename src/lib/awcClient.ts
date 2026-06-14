@@ -22,8 +22,8 @@ const client = axios.create({
   },
 });
 
-export async function awcGet(path: string, params: Record<string, string> = {}): Promise<unknown> {
-  const key = path + JSON.stringify(params);
+export async function awcGet(path: string, params: Record<string, string> = {}, options?: { accept?: string }): Promise<unknown> {
+  const key = path + JSON.stringify(params) + (options?.accept || "");
 
   // Return cached response if still fresh
   const cached = cache.get(key);
@@ -42,8 +42,13 @@ export async function awcGet(path: string, params: Record<string, string> = {}):
       try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 8000);
+        const headers: Record<string, string> = { "User-Agent": USER_AGENT };
+        if (options?.accept) headers["Accept"] = options.accept;
+        else headers["Accept"] = "application/json";
+
         const response = await client.get(path, {
           params,
+          headers,
           signal: controller.signal,
         });
         clearTimeout(timeout);

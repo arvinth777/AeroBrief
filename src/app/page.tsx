@@ -10,6 +10,8 @@ import React, {
 } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { X, RefreshCw, AlertTriangle, Info } from "lucide-react";
+import { WindsAloftTable } from "@/components/WindsAloftTable";
+import { getBriefing } from "@/lib/briefingService";
 import { springs } from "@/lib/springs";
 import { AIRPORT_COORDS } from "@/lib/airports";
 
@@ -484,16 +486,16 @@ function TAFTimeline({
           {airport.icao}
         </span>
       </div>
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      <div className="flex gap-3 overflow-x-auto pb-2 px-4 -mx-4 snap-x no-scrollbar">
         {blocks.map((block, i) => {
           const s = categoryStyle(block.flightCategory);
           return (
             <motion.div
               key={i}
-              initial={{ opacity: 0, x: 10 }}
-              animate={{ opacity: 1, x: 0 }}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
               transition={{ ...springs.default, delay: i * 0.04 }}
-              className={`shrink-0 border rounded-lg p-3 min-w-[120px] cursor-pointer transition-all duration-150 ${s.pill}`}
+              className={`snap-start shrink-0 border rounded-lg p-3 min-w-[120px] cursor-pointer transition-all duration-150 ${s.pill} ${i === 0 ? 'ml-0' : ''}`}
               whileTap={{ scale: 0.96 }}
             >
               <div className="text-[9px] font-bold tracking-[0.08em] mb-1 opacity-70">
@@ -540,7 +542,7 @@ function AIInsights({ ai, isLoading, onRefresh }: { ai: AIBriefing | null; isLoa
       ) : ai ? (
         <>
           <div className={`border ${recStyle.border} ${recStyle.bg} rounded-lg p-4`}>
-            <div className="flex items-baseline gap-3 mb-3">
+            <div className="flex items-center justify-between mb-3">
               <span className="text-[#888] text-[10px] font-bold tracking-[0.2em] uppercase">Recommendation</span>
               <motion.span
                 initial={shouldReduceMotion ? {} : { scale: 0.3, opacity: 0 }}
@@ -675,13 +677,13 @@ export default function Page() {
   const isStale = staleMinutes >= 15;
   const hasData = airportList.length > 0;
 
-  // Build marker data for the map
   const markers = airportList.map((apt) => ({
     icao: apt.icao,
     coordinates: apt.coordinates ?? AIRPORT_COORDS[apt.icao] ?? [-98.58, 39.83],
     flightCategory: apt.metar?.flightCategory ?? "VFR",
     isActive: apt.icao === state.activeAirport,
     isAlternate: state.alternates.includes(apt.icao),
+    metar: apt.metar,
   }));
 
   return (
@@ -846,6 +848,11 @@ export default function Page() {
           {/* TAF Timeline for active airport */}
           {state.activeAirport && state.airports[state.activeAirport] && (
             <TAFTimeline airport={state.airports[state.activeAirport]} />
+          )}
+
+          {/* Winds Aloft for active airport */}
+          {state.activeAirport && state.airports[state.activeAirport]?.windsAloft && (
+            <WindsAloftTable levels={state.airports[state.activeAirport].windsAloft.levels} />
           )}
         </div>
       </div>

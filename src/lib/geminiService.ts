@@ -43,6 +43,9 @@ type AirportInput = Record<string, {
       period?: string;
     }[]
   } | null;
+  windsAloft?: {
+    levels: { altitude: number; direction: number | null; speed: number; temp: number | null }[];
+  } | null;
 }>;
 
 function condenseBriefing(airports: AirportInput, hazards: unknown[], pireps: unknown[]): string {
@@ -62,6 +65,7 @@ function condenseBriefing(airports: AirportInput, hazards: unknown[], pireps: un
             visibility: b.visibility,
             clouds: b.clouds,
           })),
+          windsAloft: apt.windsAloft?.levels,
         },
       ])
     ),
@@ -79,6 +83,7 @@ function buildPrompt(icaos: string[], payload: string): string {
 Weather data:
 ${payload}
 
+Use the winds aloft data to identify freezing levels (temperatures below 0°C) which indicate icing risk, and note significant headwinds or tailwinds.
 Provide a safety-focused briefing in plain English (no ICAO jargon). Return ONLY valid JSON with this exact structure:
 {
   "summary": "2-3 sentence plain English overview of route weather conditions",
@@ -135,7 +140,7 @@ export async function getAIBriefing(
   // Attempt 1: With structured JSON output
   try {
     const response = await client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -155,7 +160,7 @@ export async function getAIBriefing(
   // Attempt 2: Plain text with JSON extraction
   try {
     const response = await client.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       contents: prompt + "\n\nIMPORTANT: Your entire response must be valid JSON only, no other text.",
       config: {
         temperature: 0.2,
