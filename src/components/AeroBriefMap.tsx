@@ -574,49 +574,107 @@ export default function AeroBriefMap({
         ))}
 
         {/* Flight Popup */}
-        {showFlights && hoveredFlight && (
-          <Popup
-            longitude={hoveredFlight.longitude}
-            latitude={hoveredFlight.latitude}
-            anchor="bottom"
-            offset={[0, -10]}
-            closeOnClick={false}
-            onClose={() => setHoveredFlight(null)}
-            className="z-50"
-          >
-            <div className="bg-[#1a1a1a] text-white p-3 rounded-lg shadow-2xl border border-[#333] min-w-[160px]">
-              <div className="flex justify-between items-center mb-2 border-b border-[#333] pb-1">
-                <div className="font-bold tracking-widest text-[#fbbc05]">{hoveredFlight.callsign}</div>
-                <div className="text-[9px] text-[#888] font-mono">{hoveredFlight.icao24}</div>
-              </div>
-              <div className="flex flex-col gap-1 text-[11px] font-mono text-[#ddd]">
-                {hoveredFlight.metadata ? (
-                  <>
-                    <div className="text-[#888] uppercase text-[9px] mb-1 leading-tight">{hoveredFlight.metadata.airline}</div>
-                    <div className="flex justify-between">
-                      <span className="text-[#666]">ROUTE</span>
-                      <span>{hoveredFlight.metadata.departure_airport} ➔ {hoveredFlight.metadata.arrival_airport}</span>
+        {showFlights && hoveredFlight && (() => {
+          const f = hoveredFlight as any;
+          const altFt = f.altitude != null ? Math.round(f.altitude * 3.28084) : null;
+          const spdKt = f.velocity != null ? Math.round(f.velocity * 1.94384) : null;
+          const hdg = f.heading != null ? Math.round(f.heading) : null;
+          const vr = f.verticalRate; // m/s
+          const vrFpm = vr != null ? Math.round(vr * 196.85) : null;
+          
+          // Determine flight phase
+          const phase = vr == null ? null 
+            : vr > 1.5 ? "CLB" 
+            : vr < -1.5 ? "DSC" 
+            : "CRZ";
+          const phaseColor = phase === "CLB" ? "#2ebd6b" : phase === "DSC" ? "#eb5757" : "#4b70db";
+          const phaseLabel = phase === "CLB" ? "↑ CLIMBING" : phase === "DSC" ? "↓ DESCENDING" : "→ CRUISING";
+
+          // FL or altitude label
+          const flLevel = altFt != null ? (altFt >= 18000 ? `FL${Math.round(altFt / 100)}` : `${altFt.toLocaleString()} ft`) : "N/A";
+
+          return (
+            <Popup
+              longitude={f.longitude}
+              latitude={f.latitude}
+              anchor="bottom"
+              offset={[0, -14]}
+              closeOnClick={false}
+              onClose={() => setHoveredFlight(null)}
+              className="z-50"
+            >
+              <div className="bg-[#111] text-white rounded-xl shadow-2xl border border-[#2a2a2a] overflow-hidden" style={{ minWidth: 220 }}>
+                {/* Header */}
+                <div className="bg-[#1a1a1a] px-4 py-3 border-b border-[#2a2a2a]">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-bold text-[16px] tracking-widest text-[#fbbc05] font-mono">{f.callsign}</span>
+                    {phase && (
+                      <span className="text-[9px] font-bold tracking-[0.15em] px-2 py-0.5 rounded" style={{ color: phaseColor, backgroundColor: `${phaseColor}20` }}>
+                        {phaseLabel}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[10px] font-mono text-[#555]">{f.icao24?.toUpperCase()}</span>
+                    {f.squawk && <span className="text-[9px] text-[#444] font-mono border border-[#333] px-1.5 rounded">SQ {f.squawk}</span>}
+                  </div>
+                </div>
+
+                {/* Route/airline from Aviationstack */}
+                {f.metadata ? (
+                  <div className="px-4 py-2.5 border-b border-[#1e1e1e] bg-[#141414]">
+                    <div className="text-[9px] text-[#666] uppercase tracking-[0.18em] mb-1.5">{f.metadata.airline}</div>
+                    <div className="flex items-center gap-2 text-[13px] font-bold font-mono">
+                      <span className="text-[#ddd]">{f.metadata.departure_airport}</span>
+                      <span className="text-[#444] text-[10px]">——›</span>
+                      <span className="text-[#ddd]">{f.metadata.arrival_airport}</span>
                     </div>
-                  </>
+                    {(f.metadata.scheduled_departure || f.metadata.scheduled_arrival) && (
+                      <div className="flex gap-3 mt-1.5 text-[9px] font-mono">
+                        {f.metadata.scheduled_departure && (
+                          <span className="text-[#555]">
+                            DEP <span className="text-[#888]">{new Date(f.metadata.scheduled_departure).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                          </span>
+                        )}
+                        {f.metadata.scheduled_arrival && (
+                          <span className="text-[#555]">
+                            ARR <span className="text-[#888]">{new Date(f.metadata.scheduled_arrival).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 ) : (
-                  <div className="text-[#666] text-[9px] italic mb-1">No metadata available</div>
+                  <div className="px-4 py-2 border-b border-[#1e1e1e] bg-[#141414]">
+                    <span className="text-[9px] text-[#444] italic">Airline data unavailable</span>
+                  </div>
                 )}
-                <div className="flex justify-between">
-                  <span className="text-[#666]">ALT</span>
-                  <span>{hoveredFlight.altitude != null ? `${Math.round(hoveredFlight.altitude * 3.28084)} ft` : 'N/A'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[#666]">SPD</span>
-                  <span>{hoveredFlight.velocity != null ? `${Math.round(hoveredFlight.velocity * 1.94384)} kt` : 'N/A'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[#666]">HDG</span>
-                  <span>{hoveredFlight.heading != null ? `${Math.round(hoveredFlight.heading)}°` : 'N/A'}</span>
+
+                {/* Telemetry grid */}
+                <div className="px-4 py-3 grid grid-cols-2 gap-x-5 gap-y-2.5 text-[11px] font-mono">
+                  <div>
+                    <div className="text-[9px] text-[#555] tracking-[0.15em] mb-0.5">ALTITUDE</div>
+                    <div className="text-[#ddd] font-bold">{flLevel}</div>
+                  </div>
+                  <div>
+                    <div className="text-[9px] text-[#555] tracking-[0.15em] mb-0.5">SPEED</div>
+                    <div className="text-[#ddd] font-bold">{spdKt != null ? `${spdKt} kt` : "N/A"}</div>
+                  </div>
+                  <div>
+                    <div className="text-[9px] text-[#555] tracking-[0.15em] mb-0.5">HEADING</div>
+                    <div className="text-[#ddd] font-bold">{hdg != null ? `${hdg}°` : "N/A"}</div>
+                  </div>
+                  <div>
+                    <div className="text-[9px] text-[#555] tracking-[0.15em] mb-0.5">VERT RATE</div>
+                    <div className="font-bold" style={{ color: vrFpm != null ? phaseColor : "#555" }}>
+                      {vrFpm != null ? `${vrFpm > 0 ? "+" : ""}${vrFpm.toLocaleString()} fpm` : "N/A"}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </Popup>
-        )}
+            </Popup>
+          );
+        })()}
 
         {/* Hazard Popup */}
         {hoverInfo && (

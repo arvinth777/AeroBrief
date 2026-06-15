@@ -104,7 +104,7 @@ export async function GET(request: Request) {
       const [
         icao24, callsignRaw, _originCountry, _timePosition, _lastContact, 
         longitude, latitude, baroAltitude, onGround, velocity, 
-        trueTrack, _verticalRate, _sensors, geoAltitude, _squawk, _spi, _positionSource
+        trueTrack, verticalRate, _sensors, geoAltitude, squawk, _spi, _positionSource
       ] = state;
 
       if (!latitude || !longitude || onGround) continue;
@@ -165,6 +165,8 @@ export async function GET(request: Request) {
         altitude: geoAltitude !== null ? geoAltitude : (baroAltitude !== null ? baroAltitude : null),
         velocity: velocity !== null ? velocity : null,
         heading: trueTrack !== null ? trueTrack : null,
+        verticalRate: verticalRate !== null ? verticalRate : null,
+        squawk: squawk || null,
         metadata,
       });
     }
