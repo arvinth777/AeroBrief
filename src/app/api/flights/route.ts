@@ -16,8 +16,18 @@ interface FlightMetadata {
   cached_at: number;
 }
 
+interface AircraftInfo {
+  registration: string;
+  typeCode: string;
+  model: string;
+  manufacturer: string;
+  owner: string;
+  cached_at: number;
+}
+
 interface CacheData {
   metadata: Record<string, FlightMetadata>;
+  aircraft: Record<string, AircraftInfo>;
   apiCallsThisMonth: number;
   currentMonthStr: string;
 }
@@ -37,7 +47,7 @@ function loadCache(): CacheData {
   } catch (e) {
     console.warn("Failed to load flight cache", e);
   }
-  return { metadata: {}, apiCallsThisMonth: 0, currentMonthStr };
+  return { metadata: {}, aircraft: {}, apiCallsThisMonth: 0, currentMonthStr };
 }
 
 function saveCache(data: CacheData) {
@@ -157,6 +167,40 @@ export async function GET(request: Request) {
         }
       }
 
+      let aircraftInfo: AircraftInfo | null = null;
+
+      // 5. Hexdb.io fallback for aircraft registry (GA, cargo, military, etc)
+      //    Look up by icao24 — 24h cache, no API key needed
+      if (icao24) {
+        const cachedAc = cache.aircraft[icao24];
+        if (cachedAc && (Date.now() - cachedAc.cached_at) < 24 * 60 * 60 * 1000) {
+          aircraftInfo = cachedAc;
+        } else {
+          try {
+            const hexRes = await fetch(`https://hexdb.io/hex-data?hex=${icao24}`, {
+              headers: { "Accept": "application/json" },
+              signal: AbortSignal.timeout(3000),
+            });
+            if (hexRes.ok) {
+              const hexData = await hexRes.json();
+              if (hexData && hexData.Registration) {
+                aircraftInfo = {
+                  registration: hexData.Registration || "",
+                  typeCode: hexData.ICAOTypeCode || "",
+                  model: hexData.Type || "",
+                  manufacturer: hexData.Manufacturer || "",
+                  owner: hexData.RegisteredOwners || hexData.Operator || "",
+                  cached_at: Date.now(),
+                };
+                cache.aircraft[icao24] = aircraftInfo;
+              }
+            }
+          } catch (err) {
+            // hexdb unavailable — silently skip
+          }
+        }
+      }
+
       liveFlights.push({
         icao24,
         callsign: callsign || "UNKNOWN",
@@ -168,6 +212,7 @@ export async function GET(request: Request) {
         verticalRate: verticalRate !== null ? verticalRate : null,
         squawk: squawk || null,
         metadata,
+        aircraftInfo,
       });
     }
 

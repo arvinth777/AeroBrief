@@ -644,9 +644,27 @@ export default function AeroBriefMap({
                       </div>
                     )}
                   </div>
+                ) : f.aircraftInfo ? (
+                  <div className="px-4 py-2.5 border-b border-[#1e1e1e] bg-[#141414]">
+                    {f.aircraftInfo.owner && (
+                      <div className="text-[9px] text-[#666] uppercase tracking-[0.18em] mb-1.5 truncate" title={f.aircraftInfo.owner}>{f.aircraftInfo.owner}</div>
+                    )}
+                    <div className="flex items-center gap-2 text-[12px] font-bold font-mono">
+                      <span className="text-[#ddd]">{f.aircraftInfo.registration}</span>
+                      {f.aircraftInfo.typeCode && (
+                        <>
+                          <span className="text-[#333]">·</span>
+                          <span className="text-[#888] text-[11px]">{f.aircraftInfo.typeCode}</span>
+                        </>
+                      )}
+                    </div>
+                    {f.aircraftInfo.model && (
+                      <div className="text-[9px] text-[#555] mt-0.5 font-mono">{f.aircraftInfo.manufacturer} {f.aircraftInfo.model}</div>
+                    )}
+                  </div>
                 ) : (
                   <div className="px-4 py-2 border-b border-[#1e1e1e] bg-[#141414]">
-                    <span className="text-[9px] text-[#444] italic">Airline data unavailable</span>
+                    <span className="text-[9px] text-[#444] italic">Aircraft data unavailable</span>
                   </div>
                 )}
 
