@@ -9,8 +9,18 @@ const rateLimitMap = new Map<string, number[]>();
 function checkRateLimit(ip: string): boolean {
   const now = Date.now();
   const timestamps = (rateLimitMap.get(ip) ?? []).filter((t) => now - t < 60_000);
-  if (timestamps.length >= 10) return false;
-  rateLimitMap.set(ip, [...timestamps, now]);
+  if (timestamps.length >= 10) {
+    rateLimitMap.set(ip, timestamps);
+    return false;
+  }
+  timestamps.push(now);
+  rateLimitMap.set(ip, timestamps);
+  // Prune stale IPs periodically (keep map from growing unbounded)
+  if (rateLimitMap.size > 200) {
+    for (const [key, times] of rateLimitMap) {
+      if (times.every((t) => now - t >= 60_000)) rateLimitMap.delete(key);
+    }
+  }
   return true;
 }
 
@@ -27,7 +37,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: { airports?: unknown };
+  let body: { airports?: unknown; aircraft?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -79,11 +89,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Extract aircraft profile from request
+  const aircraftId = typeof body.aircraft === "string" ? body.aircraft : undefined;
+
   // Get AI summary (never blocks the briefing — returns fallback on failure)
   const ai = await getAIBriefing(
     briefing.airports as Parameters<typeof getAIBriefing>[0],
     briefing.hazards,
-    briefing.pireps
+    briefing.pireps,
+    aircraftId
   );
 
   return NextResponse.json(

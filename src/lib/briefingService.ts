@@ -3,6 +3,7 @@
 
 import { awcGet } from "./awcClient";
 import { getBoundingBox, getAirportCoords } from "./airports";
+import { getNotamsForAirport, type Notam } from "./notamClient";
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 export interface MetarData {
@@ -50,6 +51,7 @@ export interface AirportBriefing {
   metar: MetarData | null;
   parsedTaf: ParsedTaf | null;
   windsAloft: WindsAloft | null;
+  notams: Notam[];
 }
 
 export interface BriefingResponse {
@@ -299,7 +301,7 @@ export async function getBriefing(airports: string[]): Promise<BriefingResponse>
   const bbox = getBoundingBox(airports);
 
   // Parallel fan-out
-  const [metarResult, tafResult, pirepResult, sigmetResult, windResult] = await Promise.allSettled([
+  const [metarResult, tafResult, pirepResult, sigmetResult, windResult, ...notamResults] = await Promise.allSettled([
     awcGet("/metar", { ids: airports.join(","), format: "json", hours: "3" }),
     awcGet("/taf", { ids: airports.join(","), format: "json", time: "valid" }),
     bbox
@@ -316,6 +318,7 @@ export async function getBriefing(airports: string[]): Promise<BriefingResponse>
         })
       : Promise.resolve([]),
     awcGet("/windtemp", { region: "all", fcst: "06" }, { accept: "text/plain" }),
+    ...airports.map(icao => getNotamsForAirport(icao))
   ]);
 
   // Index METARs by ICAO
@@ -387,6 +390,9 @@ export async function getBriefing(airports: string[]): Promise<BriefingResponse>
       metar: awcMetar ? parseMetarFromAwc(awcMetar) : null,
       parsedTaf: awcTaf ? parseTafFromAwc(awcTaf) : null,
       windsAloft: windsAloftMap[icao.slice(1)] || null,
+      notams: notamResults[airports.indexOf(icao)].status === "fulfilled" 
+        ? (notamResults[airports.indexOf(icao)] as PromiseFulfilledResult<Notam[]>).value 
+        : [],
     };
   }
 

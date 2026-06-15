@@ -12,6 +12,7 @@ const TTL_MS = (parseInt(process.env.AWC_CACHE_TTL_SECONDS || "90")) * 1000;
 
 const cache = new Map<string, { data: unknown; expiresAt: number }>();
 const inFlight = new Map<string, Promise<unknown>>();
+const MAX_CACHE_SIZE = 100;
 
 const client = axios.create({
   baseURL: AWC_BASE,
@@ -54,6 +55,11 @@ export async function awcGet(path: string, params: Record<string, string> = {}, 
         clearTimeout(timeout);
         const data = response.data;
         cache.set(key, { data, expiresAt: Date.now() + TTL_MS });
+        // Evict oldest entries if cache grows too large
+        if (cache.size > MAX_CACHE_SIZE) {
+          const firstKey = cache.keys().next().value;
+          if (firstKey) cache.delete(firstKey);
+        }
         return data;
       } catch (err: unknown) {
         lastErr = err;

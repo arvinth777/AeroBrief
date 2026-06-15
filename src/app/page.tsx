@@ -9,14 +9,14 @@ import React, {
   useReducer,
 } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { X, RefreshCw, AlertTriangle, Info } from "lucide-react";
+import { X, AlertTriangle, RefreshCw, Layers, Plane, Info } from "lucide-react";
 import { WindsAloftTable } from "@/components/WindsAloftTable";
-import { getBriefing } from "@/lib/briefingService";
+import { AIRCRAFT_PROFILES } from "@/lib/aircraftProfiles";
 import { springs } from "@/lib/springs";
 import { AIRPORT_COORDS } from "@/lib/airports";
 
 // Lazy-load the heavy Mapbox bundle
-const AeroBriefMap = dynamic(() => import("@/components/AeroBriefMap"), {
+const AeroBriefMapDynamic = dynamic(() => import("@/components/AeroBriefMap"), {
   ssr: false,
   loading: () => (
     <div className="w-full h-full flex items-center justify-center bg-[#080808] rounded-xl border border-[#1a1a1a]">
@@ -51,12 +51,16 @@ interface TafBlock {
   visibility: string;
   clouds: string;
 }
+const ICAO_RE = /^[A-Z0-9]{3,4}$/i;
+
 interface AirportData {
   icao: string;
   name: string;
   coordinates: [number, number];
   metar: MetarData | null;
   parsedTaf: { raw: string; blocks: TafBlock[] } | null;
+  windsAloft?: any;
+  notams?: { id: string; message: string }[];
 }
 interface AIBriefing {
   summary: string;
@@ -74,7 +78,12 @@ interface AppState {
   meta: { generatedAt: string; partialFailures: string[]; demoMode?: boolean } | null;
   ai: AIBriefing | null;
   activeAirport: string | null;
-  mapLayers: { radar: boolean; sigmets: boolean; pireps: boolean };
+  mapLayers: {
+    radar: boolean;
+    sigmets: boolean;
+    pireps: boolean;
+    flights: boolean;
+  };
   recentRoutes: string[][];
   alternates: string[];
 }
@@ -82,7 +91,7 @@ interface AppState {
 type Action =
   | { type: "FETCH_START" }
   | { type: "FETCH_SUCCESS"; payload: { briefing: { airports: Record<string, AirportData>; hazards: unknown[]; pireps: unknown[]; meta: AppState["meta"] }; ai: AIBriefing; alternates: string[] } }
-  | { type: "FETCH_ERROR"; payload: string }
+  | { type: "FETCH_ERROR"; payload: string | null }
   | { type: "SET_ACTIVE_AIRPORT"; payload: string | null }
   | { type: "TOGGLE_LAYER"; payload: keyof AppState["mapLayers"] }
   | { type: "SET_RECENT_ROUTES"; payload: string[][] };
@@ -97,7 +106,12 @@ const initialState: AppState = {
   meta: null,
   ai: null,
   activeAirport: null,
-  mapLayers: { radar: false, sigmets: false, pireps: false },
+  mapLayers: {
+    radar: false,
+    sigmets: true,
+    pireps: true,
+    flights: false,
+  },
   recentRoutes: [],
   alternates: [],
 };
@@ -122,7 +136,7 @@ function reducer(state: AppState, action: Action): AppState {
       };
     }
     case "FETCH_ERROR":
-      return { ...state, isLoading: false, error: action.payload };
+      return { ...state, isLoading: false, error: action.payload || null };
     case "SET_ACTIVE_AIRPORT":
       return { ...state, activeAirport: action.payload };
     case "TOGGLE_LAYER":
@@ -186,8 +200,6 @@ function RouteInput({
   const [shake, setShake] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const shouldReduceMotion = useReducedMotion();
-
-  const ICAO_RE = /^[A-Za-z]{2,4}$/;
 
   const addTag = useCallback(
     (raw: string) => {
@@ -373,7 +385,6 @@ function StationCard({
 }) {
   const [showRaw, setShowRaw] = useState(false);
   const shouldReduceMotion = useReducedMotion();
-  const s = categoryStyle(airport.metar?.flightCategory ?? "");
 
   return (
     <motion.div
@@ -442,28 +453,51 @@ function StationCard({
               {airport.parsedTaf.raw}
             </div>
           )}
+          {airport.notams && airport.notams.length > 0 && (
+            <div className="border border-[#1a1a1a] bg-[#050505] p-3 rounded-md text-[11px] font-mono text-[#888] leading-[1.6] break-words">
+              <span className="text-[#555] font-bold block mb-1">NOTAMs</span>
+              <ul className="flex flex-col gap-2">
+                {airport.notams.map(n => (
+                  <li key={n.id} className="pb-2 border-b border-[#1a1a1a] last:border-0 last:pb-0">
+                    <strong className="text-[#aaa] mr-2">{n.id}</strong>
+                    {n.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       ) : (
-        airport.metar ? (
-          <div className="flex border border-[#1a1a1a] rounded-md overflow-hidden">
-            <div className="p-3 w-1/2 border-r border-[#1a1a1a]">
-              <div className="text-[#444] text-[9px] font-bold tracking-[0.2em] mb-1.5">WIND</div>
-              <div className="text-[#d1d1d1] text-[14px] font-medium tabular-nums tracking-wide">
-                {formatWind(airport.metar.wind)}
+        <>
+          {airport.metar ? (
+            <div className="flex border border-[#1a1a1a] rounded-md overflow-hidden">
+              <div className="p-3 w-1/2 border-r border-[#1a1a1a]">
+                <div className="text-[#444] text-[9px] font-bold tracking-[0.2em] mb-1.5">WIND</div>
+                <div className="text-[#d1d1d1] text-[14px] font-medium tabular-nums tracking-wide">
+                  {formatWind(airport.metar.wind)}
+                </div>
+              </div>
+              <div className="p-3 w-1/2">
+                <div className="text-[#444] text-[9px] font-bold tracking-[0.2em] mb-1.5">VIS</div>
+                <div className="text-[#d1d1d1] text-[14px] font-medium tabular-nums tracking-wide">
+                  {formatVis(airport.metar.visibility)}
+                </div>
               </div>
             </div>
-            <div className="p-3 w-1/2">
-              <div className="text-[#444] text-[9px] font-bold tracking-[0.2em] mb-1.5">VIS</div>
-              <div className="text-[#d1d1d1] text-[14px] font-medium tabular-nums tracking-wide">
-                {formatVis(airport.metar.visibility)}
+          ) : (
+            <div className="border border-[#1a1a1a] border-dashed p-4 rounded-md text-[11px] text-[#444] font-mono text-center">
+              METAR data unavailable
+            </div>
+          )}
+          {airport.notams && airport.notams.length > 0 && (
+            <div className="mt-2">
+              <div className="text-[#444] text-[9px] font-bold tracking-[0.2em] mb-1.5">CRITICAL NOTAMs ({airport.notams.length})</div>
+              <div className="text-[#888] text-[11px] font-mono line-clamp-3 leading-[1.5]">
+                {airport.notams[0].message}
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="border border-[#1a1a1a] border-dashed p-4 rounded-md text-[11px] text-[#444] font-mono text-center">
-            METAR data unavailable
-          </div>
-        )
+          )}
+        </>
       )}
     </motion.div>
   );
@@ -613,7 +647,7 @@ function AIInsights({ ai, isLoading, onRefresh }: { ai: AIBriefing | null; isLoa
 ══════════════════════════════════════════════════════════════════════ */
 export default function Page() {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const [staleMinutes, setStaleMinutes] = useState(0);
+  const [selectedAircraft, setSelectedAircraft] = useState<string>("SR22");
   const shouldReduceMotion = useReducedMotion();
 
   // Hydrate from localStorage
@@ -624,27 +658,32 @@ export default function Page() {
     } catch { /* ignore */ }
   }, []);
 
-  // Data freshness polling (every 30s)
+  // Ticking clock for data staleness — use ref to set initial value synchronously,
+  // then update via interval callback (not sync setState in effect body)
+  const [staleCounter, setStaleCounter] = useState(0);
   useEffect(() => {
-    if (!state.meta?.generatedAt) return;
-    const interval = setInterval(() => {
-      const age = Math.floor((Date.now() - new Date(state.meta!.generatedAt).getTime()) / 60000);
-      setStaleMinutes(age);
-    }, 30000);
-    setStaleMinutes(0); // Reset on new data
+    const interval = setInterval(() => setStaleCounter(c => c + 1), 30000);
     return () => clearInterval(interval);
-  }, [state.meta]);
+  }, []);
+  // Reset counter when new data arrives
+  const metaGenRef = useRef(state.meta?.generatedAt);
+  if (state.meta?.generatedAt !== metaGenRef.current) {
+    metaGenRef.current = state.meta?.generatedAt;
+  }
+  
+  const staleMinutes = state.meta?.generatedAt
+    ? Math.floor((Date.now() - new Date(state.meta.generatedAt).getTime()) / 60000) 
+    : 0;
 
-  const fetchBriefing = useCallback(async (airports: string[], alternates: string[] = []) => {
+  const fetchBriefing = useCallback(async (airports: string[], alternates: string[] = [], aircraftId?: string) => {
     if (airports.length === 0) return;
     dispatch({ type: "FETCH_START" });
-    setStaleMinutes(0);
 
     try {
       const res = await fetch("/api/briefing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ airports }),
+        body: JSON.stringify({ airports, aircraft: aircraftId }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Request failed." }));
@@ -658,7 +697,7 @@ export default function Page() {
       try {
         let saved = JSON.parse(localStorage.getItem("aerobrief_recent_routes") ?? "[]");
         if (!Array.isArray(saved)) saved = [];
-        const updated = [airports, ...saved.filter(r => Array.isArray(r) && r.join(",") !== airports.join(","))].slice(0, 3);
+        const updated = [airports, ...saved.filter((r: string[]) => Array.isArray(r) && r.join(",") !== airports.join(","))].slice(0, 5);
         localStorage.setItem("aerobrief_recent_routes", JSON.stringify(updated));
         dispatch({ type: "SET_RECENT_ROUTES", payload: updated });
       } catch { /* ignore */ }
@@ -669,9 +708,9 @@ export default function Page() {
 
   const handleRefresh = useCallback(() => {
     if (Object.keys(state.airports).length > 0) {
-      fetchBriefing(Object.keys(state.airports), state.alternates);
+      fetchBriefing(Object.keys(state.airports), state.alternates, selectedAircraft);
     }
-  }, [state.airports, state.alternates, fetchBriefing]);
+  }, [state.airports, state.alternates, fetchBriefing, selectedAircraft]);
 
   const airportList = Object.values(state.airports);
   const isStale = staleMinutes >= 15;
@@ -723,7 +762,7 @@ export default function Page() {
               <AlertTriangle size={12} />
               {state.error}
             </div>
-            <button onClick={() => dispatch({ type: "FETCH_ERROR", payload: "" })} className="hover:text-white transition-colors cursor-pointer">
+            <button onClick={() => dispatch({ type: "FETCH_ERROR", payload: null })} className="hover:text-white transition-colors cursor-pointer">
               <X size={12} />
             </button>
           </motion.div>
@@ -751,9 +790,18 @@ export default function Page() {
           <span className="text-[#888] font-bold tracking-[0.25em] text-[11px]">AEROBRIEF // OPS</span>
         </div>
 
-        <div className="w-full md:w-1/2 flex justify-center">
+        <div className="w-full md:w-1/2 flex justify-center gap-3">
+          <select 
+            value={selectedAircraft}
+            onChange={(e) => setSelectedAircraft(e.target.value)}
+            className="bg-[#111] text-[#ccc] border border-[#222] rounded-md px-3 py-2 text-[11px] font-mono outline-none focus:border-[#444] transition-colors"
+          >
+            {Object.values(AIRCRAFT_PROFILES).map(p => (
+              <option key={p.id} value={p.id}>{p.id}</option>
+            ))}
+          </select>
           <RouteInput
-            onSubmit={fetchBriefing}
+            onSubmit={(apts, alts) => fetchBriefing(apts, alts, selectedAircraft)}
             isLoading={state.isLoading}
             recentRoutes={state.recentRoutes}
           />
@@ -775,20 +823,21 @@ export default function Page() {
         {/* Map (Mobile top 45dvh, Desktop middle 6 cols) */}
         <div className="order-1 lg:order-2 lg:col-span-6 flex flex-col min-h-[45dvh] lg:min-h-0 relative shrink-0">
           <div className="flex-1 rounded-xl border border-[#1a1a1a] overflow-hidden relative min-h-0">
-            <AeroBriefMap
+            <AeroBriefMapDynamic
               markers={markers}
               hazards={state.hazards}
               pireps={state.pireps}
               showRadar={state.mapLayers.radar}
               showSigmets={state.mapLayers.sigmets}
               showPireps={state.mapLayers.pireps}
+              showFlights={state.mapLayers.flights}
               activeAirport={state.activeAirport}
               onMarkerClick={(icao) => dispatch({ type: "SET_ACTIVE_AIRPORT", payload: icao })}
             />
 
             {/* Layer Controls - Segmented Pill */}
             <div className="absolute top-4 right-4 z-10 bg-[#0a0a0a]/80 backdrop-blur-md p-1 border border-[#1a1a1a] rounded-lg flex items-center shadow-lg">
-              {(["radar", "sigmets", "pireps"] as const).map((layer) => (
+              {(["radar", "sigmets", "pireps", "flights"] as const).map((layer) => (
                 <button
                   key={layer}
                   onClick={() => dispatch({ type: "TOGGLE_LAYER", payload: layer })}

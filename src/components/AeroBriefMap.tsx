@@ -23,6 +23,7 @@ interface Props {
   showRadar: boolean;
   showSigmets: boolean;
   showPireps: boolean;
+  showFlights: boolean;
   activeAirport: string | null;
   onMarkerClick: (icao: string) => void;
 }
@@ -77,6 +78,7 @@ export default function AeroBriefMap({
   showRadar,
   showSigmets,
   showPireps,
+  showFlights,
   activeAirport,
   onMarkerClick,
 }: Props) {
@@ -84,6 +86,8 @@ export default function AeroBriefMap({
   const [mapLoaded, setMapLoaded] = useState(false);
   const [radarPath, setRadarPath] = useState<string | null>(null);
   const [radarOpacity, setRadarOpacity] = useState(0);
+  const [liveFlights, setLiveFlights] = useState<any[]>([]);
+  const [hoveredFlight, setHoveredFlight] = useState<any | null>(null);
   const [popupAirport, setPopupAirport] = useState<string | null>(null);
   const [hoverInfo, setHoverInfo] = useState<{ x: number, y: number, feature: any } | null>(null);
   const [currentZoom, setCurrentZoom] = useState(4);
@@ -108,25 +112,75 @@ export default function AeroBriefMap({
   }, []);
 
   // Animate radar opacity
+  const radarOpacityRef = useRef(0);
+  useEffect(() => {
+    radarOpacityRef.current = radarOpacity;
+  });
+
   useEffect(() => {
     if (!mapLoaded) return;
     const target = showRadar ? 0.55 : 0;
     let frame: number;
-    let current = radarOpacity;
+    let current = radarOpacityRef.current;
+
     const step = () => {
       const delta = (target - current) * 0.12;
       current += delta;
-      setRadarOpacity(current);
-      if (Math.abs(target - current) > 0.005) {
-        frame = requestAnimationFrame(step);
-      } else {
+      if (Math.abs(target - current) < 0.01) {
         setRadarOpacity(target);
+      } else {
+        setRadarOpacity(current);
+        frame = requestAnimationFrame(step);
       }
     };
     frame = requestAnimationFrame(step);
     return () => cancelAnimationFrame(frame);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showRadar, mapLoaded]);
+
+  // Live Flight Polling
+  useEffect(() => {
+    if (!showFlights || !mapLoaded) {
+      return;
+    }
+
+    let cancelled = false;
+    const fetchFlights = async () => {
+      try {
+        const map = mapRef.current;
+        if (!map) return;
+        const bounds = map.getBounds();
+        if (!bounds) return;
+        const bbox = `${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()}`;
+        const res = await fetch(`/api/flights?bbox=${bbox}`);
+        if (cancelled) return;
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled && data.flights) {
+            setLiveFlights(data.flights);
+          }
+        }
+      } catch (err) {
+        if (!cancelled) console.error("Flight poll error:", err);
+      }
+    };
+
+    fetchFlights();
+    const interval = setInterval(fetchFlights, 10000); // 10s poll
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [showFlights, mapLoaded]);
+
+  // Clear flights when layer is toggled off
+  const prevShowFlights = useRef(showFlights);
+  useEffect(() => {
+    if (prevShowFlights.current && !showFlights) {
+      setLiveFlights([]);
+    }
+    prevShowFlights.current = showFlights;
+  }, [showFlights]);
 
   // Fly to fit all markers when they change
   useEffect(() => {
@@ -285,13 +339,13 @@ export default function AeroBriefMap({
         onZoom={(e) => setCurrentZoom(e.viewState.zoom)}
         onClick={(e: any) => {
           const feature = e.features && e.features[0];
-          if (feature && (feature.layer.id === "sigmets-fill" || feature.layer.id === "pireps-points")) {
+          if (feature && (feature.layer.id === "sigmets-fill" || feature.layer.id === "pireps-point")) {
             setHoverInfo({ x: e.lngLat.lng, y: e.lngLat.lat, feature: feature.properties });
           } else {
             setHoverInfo(null);
           }
         }}
-        interactiveLayerIds={(showSigmets || showPireps) ? ["sigmets-fill", "pireps-points"] : []}
+        interactiveLayerIds={(showSigmets || showPireps) ? ["sigmets-fill", "pireps-point"] : []}
         style={{ width: "100%", height: "100%" }}
       >
         {/* Radar layer */}
@@ -434,12 +488,12 @@ export default function AeroBriefMap({
         })}
 
         {/* Airport Click Popup */}
-        {popupAirport && markers.find(m => m.icao === popupAirport) && (() => {
-          const m = markers.find(m => m.icao === popupAirport)!;
+        {popupAirport && markers.find(mk => mk.icao === popupAirport) && (() => {
+          const popupMarker = markers.find(mk => mk.icao === popupAirport)!;
           return (
             <Popup
-              longitude={m.coordinates[0]}
-              latitude={m.coordinates[1]}
+              longitude={popupMarker.coordinates[0]}
+              latitude={popupMarker.coordinates[1]}
               anchor="bottom"
               offset={[0, -20]}
               closeOnClick={false}
@@ -447,37 +501,37 @@ export default function AeroBriefMap({
               className="z-50"
             >
               <div className="bg-[#1a1a1a] text-white p-3 rounded-lg shadow-2xl border border-[#333] min-w-[140px] text-center">
-                <div className="font-bold text-[14px] tracking-widest mb-1">{m.icao}</div>
+                <div className="font-bold text-[14px] tracking-widest mb-1">{popupMarker.icao}</div>
                 <div 
                   className="text-[10px] uppercase tracking-widest px-2 py-1 rounded inline-block font-bold mb-3"
-                  style={{ backgroundColor: `${getCategoryColor(m.flightCategory)}20`, color: getCategoryColor(m.flightCategory) }}
+                  style={{ backgroundColor: `${getCategoryColor(popupMarker.flightCategory)}20`, color: getCategoryColor(popupMarker.flightCategory) }}
                 >
-                  {m.flightCategory}
+                  {popupMarker.flightCategory}
                 </div>
-                {m.metar && (
+                {popupMarker.metar && (
                   <div className="flex flex-col gap-1.5 text-[11px] font-mono text-[#aaa]">
-                    {m.metar.wind?.speed != null && (
+                    {popupMarker.metar.wind?.speed != null && (
                       <div className="flex justify-between gap-4">
                         <span className="text-[#666]">WIND</span>
-                        <span>{m.metar.wind.degrees ? m.metar.wind.degrees.toString().padStart(3, '0') + '°' : 'VRB'}@{m.metar.wind.speed}kt{m.metar.wind.gust ? `G${m.metar.wind.gust}` : ''}</span>
+                        <span>{popupMarker.metar.wind.degrees ? popupMarker.metar.wind.degrees.toString().padStart(3, '0') + '°' : 'VRB'}@{popupMarker.metar.wind.speed}kt{popupMarker.metar.wind.gust ? `G${popupMarker.metar.wind.gust}` : ''}</span>
                       </div>
                     )}
-                    {m.metar.visibility != null && (
+                    {popupMarker.metar.visibility != null && (
                       <div className="flex justify-between gap-4">
                         <span className="text-[#666]">VIS</span>
-                        <span>{m.metar.visibility} SM</span>
+                        <span>{popupMarker.metar.visibility} SM</span>
                       </div>
                     )}
-                    {m.metar.temp != null && (
+                    {popupMarker.metar.temp != null && (
                       <div className="flex justify-between gap-4">
                         <span className="text-[#666]">TEMP</span>
-                        <span>{m.metar.temp}°C / {m.metar.dewpoint ?? '-'}°C</span>
+                        <span>{popupMarker.metar.temp}°C / {popupMarker.metar.dewpoint ?? '-'}°C</span>
                       </div>
                     )}
-                    {m.metar.altimeter != null && (
+                    {popupMarker.metar.altimeter != null && (
                       <div className="flex justify-between gap-4">
                         <span className="text-[#666]">ALTIM</span>
-                        <span>{m.metar.altimeter.toFixed(2)}</span>
+                        <span>{popupMarker.metar.altimeter.toFixed(2)}</span>
                       </div>
                     )}
                   </div>
@@ -486,6 +540,69 @@ export default function AeroBriefMap({
             </Popup>
           );
         })()}
+
+        {/* Flight Markers */}
+        {showFlights && liveFlights.map((flight) => (
+          <Marker
+            key={flight.icao24}
+            longitude={flight.longitude}
+            latitude={flight.latitude}
+            onClick={(e) => {
+              e.originalEvent.stopPropagation();
+              setHoveredFlight(hoveredFlight?.icao24 === flight.icao24 ? null : flight);
+            }}
+            style={{ zIndex: hoveredFlight?.icao24 === flight.icao24 ? 40 : 10 }}
+          >
+            <div className="relative group cursor-pointer" style={{ transform: `rotate(${flight.heading ?? 0}deg)` }}>
+              <Plane size={16} className="text-yellow-400 fill-yellow-400 drop-shadow-md" />
+            </div>
+          </Marker>
+        ))}
+
+        {/* Flight Popup */}
+        {showFlights && hoveredFlight && (
+          <Popup
+            longitude={hoveredFlight.longitude}
+            latitude={hoveredFlight.latitude}
+            anchor="bottom"
+            offset={[0, -10]}
+            closeOnClick={false}
+            onClose={() => setHoveredFlight(null)}
+            className="z-50"
+          >
+            <div className="bg-[#1a1a1a] text-white p-3 rounded-lg shadow-2xl border border-[#333] min-w-[160px]">
+              <div className="flex justify-between items-center mb-2 border-b border-[#333] pb-1">
+                <div className="font-bold tracking-widest text-[#fbbc05]">{hoveredFlight.callsign}</div>
+                <div className="text-[9px] text-[#888] font-mono">{hoveredFlight.icao24}</div>
+              </div>
+              <div className="flex flex-col gap-1 text-[11px] font-mono text-[#ddd]">
+                {hoveredFlight.metadata ? (
+                  <>
+                    <div className="text-[#888] uppercase text-[9px] mb-1 leading-tight">{hoveredFlight.metadata.airline}</div>
+                    <div className="flex justify-between">
+                      <span className="text-[#666]">ROUTE</span>
+                      <span>{hoveredFlight.metadata.departure_airport} ➔ {hoveredFlight.metadata.arrival_airport}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-[#666] text-[9px] italic mb-1">No metadata available</div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-[#666]">ALT</span>
+                  <span>{hoveredFlight.altitude != null ? `${Math.round(hoveredFlight.altitude * 3.28084)} ft` : 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#666]">SPD</span>
+                  <span>{hoveredFlight.velocity != null ? `${Math.round(hoveredFlight.velocity * 1.94384)} kt` : 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#666]">HDG</span>
+                  <span>{hoveredFlight.heading != null ? `${Math.round(hoveredFlight.heading)}°` : 'N/A'}</span>
+                </div>
+              </div>
+            </div>
+          </Popup>
+        )}
 
         {/* Hazard Popup */}
         {hoverInfo && (

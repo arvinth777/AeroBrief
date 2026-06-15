@@ -2,6 +2,8 @@
 // Uses two-attempt strategy: structured schema first, plain JSON fallback
 
 import { GoogleGenAI } from "@google/genai";
+import { AIRCRAFT_PROFILES } from "./aircraftProfiles";
+import type { Notam } from "./notamClient";
 
 export interface AIBriefing {
   summary: string;
@@ -46,6 +48,7 @@ type AirportInput = Record<string, {
   windsAloft?: {
     levels: { altitude: number; direction: number | null; speed: number; temp: number | null }[];
   } | null;
+  notams?: Notam[];
 }>;
 
 function condenseBriefing(airports: AirportInput, hazards: unknown[], pireps: unknown[]): string {
@@ -66,6 +69,7 @@ function condenseBriefing(airports: AirportInput, hazards: unknown[], pireps: un
             clouds: b.clouds,
           })),
           windsAloft: apt.windsAloft?.levels,
+          notams: (apt.notams ?? []).slice(0, 10).map(n => n.message),
         },
       ])
     ),
@@ -77,22 +81,34 @@ function condenseBriefing(airports: AirportInput, hazards: unknown[], pireps: un
   return str.length > 6000 ? str.slice(0, 6000) + "..." : str;
 }
 
-function buildPrompt(icaos: string[], payload: string): string {
-  return `You are an aviation weather dispatcher. Analyze this aviation weather data for the route: ${icaos.join(" → ")}.
+function buildPrompt(icaos: string[], payload: string, aircraftId?: string): string {
+  const profile = aircraftId ? AIRCRAFT_PROFILES[aircraftId] : null;
+  
+  const aircraftContext = profile 
+    ? `\nAIRCRAFT LIMITATIONS (${profile.name}):
+- Max Wind: ${profile.maxWindKt} kt
+- Max Crosswind: ${profile.maxCrosswindKt} kt
+- IFR Capable: ${profile.ifrCapable}
+- FIKI (Flight Into Known Icing): ${profile.fikiCapable}
+- Max Altitude: ${profile.maxAltitude} ft\n` 
+    : "";
 
-Weather data:
+  return `You are an aviation weather dispatcher. Analyze this aviation weather data and NOTAMs for the route: ${icaos.join(" → ")}.
+${aircraftContext}
+Weather & NOTAM data:
 ${payload}
 
 Use the winds aloft data to identify freezing levels (temperatures below 0°C) which indicate icing risk, and note significant headwinds or tailwinds.
+Review NOTAMs for critical closures (runways, airspace, NAVAIDs) that could prevent dispatch.
 Provide a safety-focused briefing in plain English (no ICAO jargon). Return ONLY valid JSON with this exact structure:
 {
-  "summary": "2-3 sentence plain English overview of route weather conditions",
+  "summary": "2-3 sentence plain English overview of route weather conditions and critical NOTAMs",
   "altitudeRisks": [
     {"altitude": "SFC-FL080", "risk": "description of risk or smooth"},
     {"altitude": "FL080-FL180", "risk": "description"}
   ],
   "recommendation": "GO" or "NO-GO" or "MARGINAL",
-  "recommendationReason": "one sentence reason for the recommendation"
+  "recommendationReason": "one sentence reason for the recommendation, explicitly referencing aircraft limitations or critical NOTAMs if NO-GO"
 }`;
 }
 
@@ -125,7 +141,8 @@ function parseJsonSafely(text: string): AIBriefing | null {
 export async function getAIBriefing(
   airports: AirportInput,
   hazards: unknown[],
-  pireps: unknown[]
+  pireps: unknown[],
+  aircraftId?: string
 ): Promise<AIBriefing> {
   const client = getClient();
   if (!client) {
@@ -135,7 +152,7 @@ export async function getAIBriefing(
 
   const icaos = Object.keys(airports);
   const payload = condenseBriefing(airports, hazards, pireps);
-  const prompt = buildPrompt(icaos, payload);
+  const prompt = buildPrompt(icaos, payload, aircraftId);
 
   // Attempt 1: With structured JSON output
   try {
