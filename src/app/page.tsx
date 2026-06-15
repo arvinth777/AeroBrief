@@ -14,6 +14,7 @@ import { WindsAloftTable } from "@/components/WindsAloftTable";
 import { AIRCRAFT_PROFILES } from "@/lib/aircraftProfiles";
 import { springs } from "@/lib/springs";
 import { AIRPORT_COORDS } from "@/lib/airports";
+import { AircraftSelector } from "@/components/AircraftSelector";
 
 // Lazy-load the heavy Mapbox bundle
 const AeroBriefMapDynamic = dynamic(() => import("@/components/AeroBriefMap"), {
@@ -790,16 +791,11 @@ export default function Page() {
           <span className="text-[#888] font-bold tracking-[0.25em] text-[11px]">AEROBRIEF // OPS</span>
         </div>
 
-        <div className="w-full md:w-1/2 flex justify-center gap-3">
-          <select 
+        <div className="w-full md:w-1/2 flex flex-col md:flex-row justify-center items-stretch md:items-center gap-3">
+          <AircraftSelector 
             value={selectedAircraft}
-            onChange={(e) => setSelectedAircraft(e.target.value)}
-            className="bg-[#111] text-[#ccc] border border-[#222] rounded-md px-3 py-2 text-[11px] font-mono outline-none focus:border-[#444] transition-colors"
-          >
-            {Object.values(AIRCRAFT_PROFILES).map(p => (
-              <option key={p.id} value={p.id}>{p.id}</option>
-            ))}
-          </select>
+            onChange={setSelectedAircraft}
+          />
           <RouteInput
             onSubmit={(apts, alts) => fetchBriefing(apts, alts, selectedAircraft)}
             isLoading={state.isLoading}
