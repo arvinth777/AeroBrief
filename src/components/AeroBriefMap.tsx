@@ -10,6 +10,7 @@ import { point, lineString } from "@turf/helpers";
 import length from "@turf/length";
 import along from "@turf/along";
 import bearing from "@turf/bearing";
+import lineSliceAlong from "@turf/line-slice-along";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 export interface MarkerData {
@@ -119,7 +120,8 @@ export default function AeroBriefMap({
   showFlights,
   activeAirport,
   onMarkerClick,
-}: Props) {
+  onFlightClick,
+}: Props & { onFlightClick?: (flight: any) => void }) {
   const mapRef = useRef<MapRef>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [radarPath, setRadarPath] = useState<string | null>(null);
@@ -130,6 +132,7 @@ export default function AeroBriefMap({
   const [hoverInfo, setHoverInfo] = useState<{ x: number, y: number, feature: any } | null>(null);
   const [currentZoom, setCurrentZoom] = useState(4);
   const [routeProgress, setRouteProgress] = useState(0);
+  const [entranceProgress, setEntranceProgress] = useState(0);
 
   // Fetch latest RainViewer radar path
   useEffect(() => {
@@ -280,9 +283,48 @@ export default function AeroBriefMap({
     return () => cancelAnimationFrame(frame);
   }, [markers.length]);
 
+  // Route entrance animation
+  useEffect(() => {
+    setEntranceProgress(0);
+    if (markers.length < 2) return;
+    let frame: number;
+    let current = 0;
+    const animate = () => {
+      current += 0.02; // Fly in speed
+      if (current < 1) {
+        setEntranceProgress(current);
+        frame = requestAnimationFrame(animate);
+      } else {
+        setEntranceProgress(1);
+      }
+    };
+    frame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frame);
+  }, [markers]);
+
   const routeData = React.useMemo(() => buildRouteLine(markers), [markers]);
-  const routeLine = routeData.collection;
   const mainLine = routeData.mainLine;
+
+  const animatedRouteLine = React.useMemo(() => {
+    if (!routeData.collection || !mainLine || entranceProgress === 0) return null;
+    if (entranceProgress >= 1) return routeData.collection;
+
+    try {
+      const totalDist = length(mainLine);
+      if (totalDist === 0) return routeData.collection;
+      const slicedMain = lineSliceAlong(mainLine, 0, totalDist * entranceProgress);
+      slicedMain.properties = { type: "main" };
+
+      // Filter out the original main lines and replace with sliced
+      const altFeatures = routeData.collection.features.filter(f => f.properties?.type === "alternate");
+      return {
+        type: "FeatureCollection" as const,
+        features: [slicedMain, ...altFeatures],
+      };
+    } catch (e) {
+      return routeData.collection;
+    }
+  }, [routeData, mainLine, entranceProgress]);
 
   const movingPoint = React.useMemo(() => {
     if (!mainLine || isNaN(routeProgress)) return null;
@@ -399,8 +441,8 @@ export default function AeroBriefMap({
         )}
 
         {/* Route line */}
-        {routeLine && (
-          <Source id="route" type="geojson" data={routeLine}>
+        {animatedRouteLine && (
+          <Source id="route" type="geojson" data={animatedRouteLine}>
             <Layer
               id="route-line-main"
               type="line"
@@ -580,7 +622,8 @@ export default function AeroBriefMap({
             latitude={flight.latitude}
             onClick={(e) => {
               e.originalEvent.stopPropagation();
-              setHoveredFlight(hoveredFlight?.icao24 === flight.icao24 ? null : flight);
+              if (onFlightClick) onFlightClick(flight);
+              else setHoveredFlight(hoveredFlight?.icao24 === flight.icao24 ? null : flight);
             }}
             style={{ zIndex: hoveredFlight?.icao24 === flight.icao24 ? 40 : 10 }}
           >

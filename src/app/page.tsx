@@ -15,6 +15,7 @@ import { AIRCRAFT_PROFILES } from "@/lib/aircraftProfiles";
 import { springs } from "@/lib/springs";
 import { AIRPORT_COORDS } from "@/lib/airports";
 import { AircraftSelector } from "@/components/AircraftSelector";
+import { FlightDetailsPanel } from "@/components/FlightDetailsPanel";
 
 // Lazy-load the heavy Mapbox bundle
 const AeroBriefMapDynamic = dynamic(() => import("@/components/AeroBriefMap"), {
@@ -281,6 +282,14 @@ export function RouteInput({
     }
   };
 
+  const handleClear = () => {
+    setTags([]);
+    setAlts([]);
+    setIsAltMode(false);
+    setInputVal("");
+    onSubmit([], []); // Submit empty route to clear everything
+  };
+
   const loadRecent = (route: string[]) => {
     setTags(route);
     setAlts([]);
@@ -326,13 +335,24 @@ export function RouteInput({
             className="bg-transparent text-[#ddd] text-[12px] font-medium tracking-widest outline-none placeholder-[#333] flex-1 min-w-[80px] uppercase"
           />
         </div>
-        <button
-          onClick={handleSubmit}
-          disabled={isLoading || (tags.length === 0 && !inputVal.trim())}
-          className="shrink-0 text-[9px] font-bold tracking-[0.15em] text-[#555] hover:text-[#aaa] disabled:opacity-30 transition-colors cursor-pointer"
-        >
-          {isLoading ? "PROCESSING" : "BRIEF ↵"}
-        </button>
+        <div className="flex items-center gap-3">
+          {(tags.length > 0 || alts.length > 0) && (
+            <button
+              onClick={handleClear}
+              className="shrink-0 text-[10px] text-[#555] hover:text-[#ff4444] transition-colors p-1"
+              title="Clear Route"
+            >
+              <X size={12} />
+            </button>
+          )}
+          <button
+            onClick={handleSubmit}
+            disabled={isLoading || (tags.length === 0 && !inputVal.trim())}
+            className="shrink-0 text-[9px] font-bold tracking-[0.15em] text-[#555] hover:text-[#aaa] disabled:opacity-30 transition-colors cursor-pointer"
+          >
+            {isLoading ? "PROCESSING" : "BRIEF ↵"}
+          </button>
+        </div>
       </motion.div>
 
       {recentRoutes.length > 0 && (
@@ -662,6 +682,7 @@ function AIInsights({ ai, isLoading, onRefresh }: { ai: AIBriefing | null; isLoa
 ══════════════════════════════════════════════════════════════════════ */
 export default function Page() {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const [selectedFlight, setSelectedFlight] = useState<any | null>(null);
   
   // Always start with "" on both server and client to avoid hydration mismatch.
   // Hydrate from localStorage in a useEffect (client-only).
@@ -672,16 +693,32 @@ export default function Page() {
   }, []);
   const shouldReduceMotion = useReducedMotion();
 
-  // Hydrate localStorage values after mount (client-only — avoids SSR mismatch)
+  // Hydrate localStorage and URL params after mount (client-only — avoids SSR mismatch)
   useEffect(() => {
     try {
       const savedAircraft = localStorage.getItem("aerobrief_aircraft");
-      if (savedAircraft) setSelectedAircraftRaw(savedAircraft);
+      let initialAircraft = savedAircraft || "";
+      const params = new URLSearchParams(window.location.search);
+      const urlAircraft = params.get("aircraft");
+      if (urlAircraft) {
+        initialAircraft = urlAircraft;
+      }
+      if (initialAircraft) setSelectedAircraftRaw(initialAircraft);
+
+      const urlRoute = params.get("route");
+      if (urlRoute) {
+        const airports = urlRoute.split(",").map((a) => a.trim().toUpperCase()).filter(Boolean);
+        if (airports.length > 0) {
+          // Fire initial fetch based on URL
+          fetchBriefing(airports, [], initialAircraft);
+        }
+      }
     } catch { /* ignore */ }
     try {
       const saved = localStorage.getItem("aerobrief_recent_routes");
       if (saved) dispatch({ type: "SET_RECENT_ROUTES", payload: JSON.parse(saved) });
     } catch { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Ticking clock for data staleness — use ref to set initial value synchronously,
@@ -709,7 +746,23 @@ export default function Page() {
   }, [staleCounter, state.meta?.generatedAt]);
 
   const fetchBriefing = useCallback(async (airports: string[], alternates: string[] = [], aircraftId?: string) => {
-    if (airports.length === 0) return;
+    if (airports.length === 0) {
+      dispatch({ 
+        type: "FETCH_SUCCESS", 
+        payload: { 
+          briefing: { airports: {}, hazards: [], pireps: [], meta: null },
+          ai: { summary: "", altitudeRisks: [], recommendation: "GO", recommendationReason: "" },
+          route: [], 
+          alternates: [] 
+        } 
+      });
+      try {
+        const newUrl = new URL(window.location.href);
+        newUrl.searchParams.delete("route");
+        window.history.replaceState({}, "", newUrl.toString());
+      } catch { /* ignore */ }
+      return;
+    }
     dispatch({ type: "FETCH_START" });
 
     try {
@@ -733,6 +786,15 @@ export default function Page() {
         const updated = [airports, ...saved.filter((r: string[]) => Array.isArray(r) && r.join(",") !== airports.join(","))].slice(0, 5);
         localStorage.setItem("aerobrief_recent_routes", JSON.stringify(updated));
         dispatch({ type: "SET_RECENT_ROUTES", payload: updated });
+      } catch { /* ignore */ }
+
+      // Update URL
+      try {
+        const newUrl = new URL(window.location.href);
+        newUrl.searchParams.set("route", airports.join(","));
+        if (aircraftId) newUrl.searchParams.set("aircraft", aircraftId);
+        else newUrl.searchParams.delete("aircraft");
+        window.history.replaceState({}, "", newUrl.toString());
       } catch { /* ignore */ }
     } catch {
       dispatch({ type: "FETCH_ERROR", payload: "Network error. Check your connection." });
@@ -896,6 +958,9 @@ export default function Page() {
       {/* ── Main Grid ──────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col lg:grid lg:grid-cols-12 gap-5 p-5 min-h-0 overflow-y-auto lg:overflow-hidden relative z-10">
 
+        {/* Flight Details Panel Overlay */}
+        <FlightDetailsPanel flight={selectedFlight} onClose={() => setSelectedFlight(null)} />
+
         {/* Map */}
         <motion.div 
           layout
@@ -917,6 +982,7 @@ export default function Page() {
                 showFlights={state.mapLayers.flights}
                 activeAirport={state.activeAirport}
                 onMarkerClick={(icao) => dispatch({ type: "SET_ACTIVE_AIRPORT", payload: icao })}
+                onFlightClick={setSelectedFlight}
               />
             </div>
 
