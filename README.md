@@ -1,5 +1,8 @@
 # AeroBrief // OPS
 
+![AeroBrief Dashboard](/public/dashboard.png)
+![AeroBrief Landing](/public/landing.png)
+
 A modern, AI-powered global aviation weather briefing and flight planning dashboard. AeroBrief provides pilots and dispatchers with real-time weather, hazards, NOTAMs, and an intelligent Go/No-Go recommendation tailored to specific aircraft performance envelopes.
 
 ## ✨ Key Features
@@ -9,7 +12,7 @@ A modern, AI-powered global aviation weather briefing and flight planning dashbo
   - Animated route plotting between departure, arrival, and alternate airports.
   - Live, animated RainViewer composite radar.
   - Interactive, geolocated SIGMETs and PIREPs with decoded popups.
-  - Live flight tracking using the OpenSky Network.
+  - Live flight tracking using the OpenSky Network, AirLabs, and HexDB.
 - **Aircraft Performance Profiles:** Select from popular airframes including the Cessna 172, Cirrus SR22, Pilatus PC-12, Boeing 737-800, Boeing 777-300ER, Airbus A320, and Airbus A350-900.
 - **Live FAA NOTAMs:** Direct integration with the official FAA NOTAM Search API to display critical airport closures, runway outages, and airspace restrictions.
 - **AI Dispatcher (Gemini 2.5 Flash):** An intelligent agent that reads the raw weather data and NOTAMs, compares them against your selected aircraft's legal and physical limitations (like max crosswind, icing capability, etc.), and provides a safety-focused briefing and Go/No-Go recommendation.
@@ -23,7 +26,8 @@ A modern, AI-powered global aviation weather briefing and flight planning dashbo
 - **Data Sources:** 
   - Aviation Weather Center (AWC)
   - FAA NOTAM Search API
-  - OpenSky Network (Telemetry)
+  - OpenSky Network & AirLabs (Telemetry)
+  - HexDB & Aviationstack (Aircraft Metadata)
   - RainViewer (Radar)
 
 ## 🚀 Getting Started
@@ -36,6 +40,7 @@ GEMINI_API_KEY=your_gemini_api_key
 
 # Optional for tracking actual flight metadata
 AVIATIONSTACK_API_KEY=your_aviationstack_key
+AIRLABS_API_KEY=your_airlabs_api_key
 OPENSKY_USERNAME=your_username
 OPENSKY_PASSWORD=your_password
 ```
