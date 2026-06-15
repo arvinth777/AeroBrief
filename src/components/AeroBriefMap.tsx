@@ -92,11 +92,22 @@ function buildRouteLine(markers: MarkerData[]) {
   if (mainMarkers.length >= 1 && altMarkers.length > 0) {
     const lastMain = mainMarkers[mainMarkers.length - 1];
     altMarkers.forEach(alt => {
-      const p1 = point(lastMain.coordinates);
-      const p2 = point(alt.coordinates);
-      const gc = greatCircle(p1, p2, { npoints: 50 });
-      gc.properties = { type: "alternate" };
-      features.push(gc);
+      // Skip if same coords (would crash greatCircle)
+      if (Math.abs(lastMain.coordinates[0] - alt.coordinates[0]) < 0.001 && Math.abs(lastMain.coordinates[1] - alt.coordinates[1]) < 0.001) return;
+      try {
+        const p1 = point(lastMain.coordinates);
+        const p2 = point(alt.coordinates);
+        const gc = greatCircle(p1, p2, { npoints: 50 });
+        gc.properties = { type: "alternate" };
+        features.push(gc);
+      } catch (e) {
+        // Fallback: straight line
+        features.push({
+          type: "Feature",
+          geometry: { type: "LineString", coordinates: [lastMain.coordinates, alt.coordinates] },
+          properties: { type: "alternate" },
+        });
+      }
     });
   }
   

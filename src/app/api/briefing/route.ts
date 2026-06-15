@@ -24,7 +24,7 @@ function checkRateLimit(ip: string): boolean {
   return true;
 }
 
-const ICAO_PATTERN = /^[A-Z]{2,4}$/;
+const ICAO_PATTERN = /^[A-Z0-9]{2,4}$/;
 
 export async function POST(req: NextRequest) {
   // Rate limiting
