@@ -164,7 +164,7 @@ export function FlightDetailsPanel({ flight, onClose }: Props) {
 
           {/* Source Info */}
           <p className="text-[9px] text-[#444] text-center mt-auto pt-8">
-            Data provided by OpenSky Network & hexdb.io<br/>
+            Data provided by AirLabs, OpenSky Network & hexdb.io<br/>
             Position updated {(Date.now() / 1000 - flight.last_contact).toFixed(0)}s ago
           </p>
         </div>
