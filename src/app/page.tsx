@@ -662,21 +662,22 @@ function AIInsights({ ai, isLoading, onRefresh }: { ai: AIBriefing | null; isLoa
 ══════════════════════════════════════════════════════════════════════ */
 export default function Page() {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const [selectedAircraft, setSelectedAircraftRaw] = useState<string>(() => {
-    // Rehydrate from localStorage on first render
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("aerobrief_aircraft") ?? "";
-    }
-    return "";
-  });
+  
+  // Always start with "" on both server and client to avoid hydration mismatch.
+  // Hydrate from localStorage in a useEffect (client-only).
+  const [selectedAircraft, setSelectedAircraftRaw] = useState<string>("");
   const setSelectedAircraft = useCallback((val: string) => {
     setSelectedAircraftRaw(val);
     try { localStorage.setItem("aerobrief_aircraft", val); } catch { /* ignore */ }
   }, []);
   const shouldReduceMotion = useReducedMotion();
 
-  // Hydrate from localStorage
+  // Hydrate localStorage values after mount (client-only — avoids SSR mismatch)
   useEffect(() => {
+    try {
+      const savedAircraft = localStorage.getItem("aerobrief_aircraft");
+      if (savedAircraft) setSelectedAircraftRaw(savedAircraft);
+    } catch { /* ignore */ }
     try {
       const saved = localStorage.getItem("aerobrief_recent_routes");
       if (saved) dispatch({ type: "SET_RECENT_ROUTES", payload: JSON.parse(saved) });
@@ -696,9 +697,16 @@ export default function Page() {
     metaGenRef.current = state.meta?.generatedAt;
   }
   
-  const staleMinutes = state.meta?.generatedAt
-    ? Math.floor((Date.now() - new Date(state.meta.generatedAt).getTime()) / 60000) 
-    : 0;
+  // staleMinutes: only computed client-side after mount (Date.now() changes each render — SSR unsafe)
+  const [staleMinutes, setStaleMinutes] = useState(0);
+  useEffect(() => {
+    if (state.meta?.generatedAt) {
+      setStaleMinutes(Math.floor((Date.now() - new Date(state.meta.generatedAt).getTime()) / 60000));
+    } else {
+      setStaleMinutes(0);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staleCounter, state.meta?.generatedAt]);
 
   const fetchBriefing = useCallback(async (airports: string[], alternates: string[] = [], aircraftId?: string) => {
     if (airports.length === 0) return;
