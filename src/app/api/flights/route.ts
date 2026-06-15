@@ -234,6 +234,7 @@ export async function GET(request: Request) {
         heading: trueTrack !== null ? trueTrack : null,
         verticalRate: verticalRate !== null ? verticalRate : null,
         squawk: squawk || null,
+        last_contact: _lastContact,
         metadata,
         aircraftInfo,
       });
@@ -252,6 +253,7 @@ export async function GET(request: Request) {
         heading: alFlight.dir != null ? alFlight.dir : null,
         verticalRate: alFlight.v_speed != null ? alFlight.v_speed : null,
         squawk: alFlight.squawk || null,
+        last_contact: alFlight.updated,
         metadata: {
           airline: alFlight.airline_icao || alFlight.airline_iata || "Unknown Airline",
           departure_airport: alFlight.dep_icao || alFlight.dep_iata || "Unknown",
