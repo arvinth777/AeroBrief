@@ -270,24 +270,31 @@ export default function AeroBriefMap({
   const movingPoint = React.useMemo(() => {
     if (!mainLine || isNaN(routeProgress)) return null;
     
-    // Calculate position along the continuous great circle
-    const totalLength = length(mainLine);
-    if (totalLength === 0) return null;
-    
-    const distance = totalLength * routeProgress;
-    const pt = along(mainLine, distance);
-    
-    // Calculate bearing for plane rotation
-    // We get a point slightly ahead to find the heading
-    const lookAheadDist = Math.min(distance + 1, totalLength);
-    const lookAheadPt = along(mainLine, lookAheadDist);
-    let planeBearing = bearing(pt, lookAheadPt);
-    
-    return {
-      type: "Feature" as const,
-      properties: { bearing: planeBearing },
-      geometry: { type: "Point" as const, coordinates: pt.geometry.coordinates },
-    };
+    try {
+      // Calculate position along the continuous great circle
+      const totalLength = length(mainLine);
+      if (!totalLength || isNaN(totalLength) || totalLength === 0) return null;
+      
+      const distance = totalLength * routeProgress;
+      if (isNaN(distance)) return null;
+      
+      const pt = along(mainLine, distance);
+      
+      // Calculate bearing for plane rotation
+      // We get a point slightly ahead to find the heading
+      const lookAheadDist = Math.min(distance + 1, totalLength);
+      const lookAheadPt = along(mainLine, lookAheadDist);
+      let planeBearing = bearing(pt, lookAheadPt);
+      
+      return {
+        type: "Feature" as const,
+        properties: { bearing: planeBearing },
+        geometry: { type: "Point" as const, coordinates: pt.geometry.coordinates },
+      };
+    } catch (e) {
+      console.warn("Turf animation error:", e);
+      return null;
+    }
   }, [routeProgress, mainLine]);
 
   const sigmetGeoJSON = React.useMemo(() => {

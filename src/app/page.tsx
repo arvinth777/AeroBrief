@@ -185,14 +185,18 @@ function formatVis(vis: number | null): string {
 ══════════════════════════════════════════════════════════════════════ */
 
 // ── Pill Tag Route Input ────────────────────────────────────────────
-function RouteInput({
+export function RouteInput({
   onSubmit,
   isLoading,
   recentRoutes,
+  currentRoute = [],
+  currentAlternates = [],
 }: {
   onSubmit: (airports: string[], alternates: string[]) => void;
   isLoading: boolean;
   recentRoutes: string[][];
+  currentRoute?: string[];
+  currentAlternates?: string[];
 }) {
   const [tags, setTags] = useState<string[]>([]);
   const [alts, setAlts] = useState<string[]>([]);
@@ -201,6 +205,14 @@ function RouteInput({
   const [shake, setShake] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const shouldReduceMotion = useReducedMotion();
+
+  useEffect(() => {
+    if (currentRoute.length > 0 || currentAlternates.length > 0) {
+      setTags(currentRoute);
+      setAlts(currentAlternates);
+      setIsAltMode(currentAlternates.length > 0);
+    }
+  }, [currentRoute, currentAlternates]);
 
   const addTag = useCallback(
     (raw: string) => {
@@ -309,7 +321,7 @@ function RouteInput({
             value={inputVal}
             onChange={(e) => setInputVal(e.target.value.toUpperCase())}
             onKeyDown={handleKey}
-            placeholder={tags.length === 0 ? "KLAX / KSAN" : "add airport…"}
+            placeholder={tags.length === 0 ? "add airport…" : "add airport…"}
             className="bg-transparent text-[#ddd] text-[12px] font-medium tracking-widest outline-none placeholder-[#333] flex-1 min-w-[80px] uppercase"
           />
         </div>
@@ -759,6 +771,8 @@ export default function Page() {
                   onSubmit={(apts, alts) => fetchBriefing(apts, alts, selectedAircraft)}
                   isLoading={state.isLoading}
                   recentRoutes={state.recentRoutes}
+                  currentRoute={Object.keys(state.airports)}
+                  currentAlternates={state.alternates}
                 />
               </div>
             </div>
