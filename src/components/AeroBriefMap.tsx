@@ -221,8 +221,8 @@ export default function AeroBriefMap({
   // Radar Zoom Enforcement
   useEffect(() => {
     if (showRadar && mapRef.current && mapLoaded) {
-      if (mapRef.current.getZoom() > 14) {
-        mapRef.current.flyTo({ zoom: 14, duration: 1000 });
+      if (mapRef.current.getZoom() > 8) {
+        mapRef.current.flyTo({ zoom: 6, duration: 1000 });
       }
     }
   }, [showRadar, mapLoaded]);
@@ -355,6 +355,7 @@ export default function AeroBriefMap({
             type="raster"
             tiles={[`https://tilecache.rainviewer.com${radarPath}/256/{z}/{x}/{y}/2/1_1.png`]}
             tileSize={256}
+            maxzoom={7}
           >
             <Layer
               id="radar-layer"
