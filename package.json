@@ -11,6 +11,11 @@
   "dependencies": {
     "@fontsource/inter": "^5.2.8",
     "@google/genai": "^2.8.0",
+    "@turf/along": "^7.3.5",
+    "@turf/bearing": "^7.3.5",
+    "@turf/great-circle": "^7.3.5",
+    "@turf/helpers": "^7.3.5",
+    "@turf/length": "^7.3.5",
     "@types/mapbox-gl": "^3.4.1",
     "axios": "^1.17.0",
     "framer-motion": "^12.40.0",

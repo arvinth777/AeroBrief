@@ -1,10 +1,15 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import Map, { Source, Layer, Marker, MapRef, Popup } from "react-map-gl/maplibre";
 import { Plane } from "lucide-react";
 import { motion } from "framer-motion";
 import { springs } from "@/lib/springs";
+import greatCircle from "@turf/great-circle";
+import { point, lineString } from "@turf/helpers";
+import length from "@turf/length";
+import along from "@turf/along";
+import bearing from "@turf/bearing";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 export interface MarkerData {
@@ -44,28 +49,40 @@ function buildRouteLine(markers: MarkerData[]) {
   const altMarkers = markers.filter(m => m.isAlternate);
   
   const features: any[] = [];
+  const mainCoords: number[][] = [];
   
   if (mainMarkers.length >= 2) {
-    features.push({
-      type: "Feature",
-      geometry: { type: "LineString", coordinates: mainMarkers.map(m => m.coordinates) },
-      properties: { type: "main" }
-    });
+    for (let i = 0; i < mainMarkers.length - 1; i++) {
+      const p1 = point(mainMarkers[i].coordinates);
+      const p2 = point(mainMarkers[i+1].coordinates);
+      const gc = greatCircle(p1, p2, { npoints: 100 });
+      gc.properties = { type: "main" };
+      features.push(gc);
+      
+      if (i === 0) {
+        mainCoords.push(...(gc.geometry.coordinates as number[][]));
+      } else {
+        mainCoords.push(...(gc.geometry.coordinates as number[][]).slice(1));
+      }
+    }
   }
   
   if (mainMarkers.length >= 1 && altMarkers.length > 0) {
     const lastMain = mainMarkers[mainMarkers.length - 1];
     altMarkers.forEach(alt => {
-      features.push({
-        type: "Feature",
-        geometry: { type: "LineString", coordinates: [lastMain.coordinates, alt.coordinates] },
-        properties: { type: "alternate" }
-      });
+      const p1 = point(lastMain.coordinates);
+      const p2 = point(alt.coordinates);
+      const gc = greatCircle(p1, p2, { npoints: 50 });
+      gc.properties = { type: "alternate" };
+      features.push(gc);
     });
   }
   
-  if (features.length === 0) return null;
-  return { type: "FeatureCollection" as const, features };
+  if (features.length === 0) return { collection: null, mainLine: null };
+  return { 
+    collection: { type: "FeatureCollection" as const, features },
+    mainLine: mainCoords.length >= 2 ? lineString(mainCoords) : null
+  };
 }
 
 // Free dark map style from CARTO (no token required)
@@ -242,47 +259,30 @@ export default function AeroBriefMap({
     return () => cancelAnimationFrame(frame);
   }, [markers.length]);
 
-  const routeLine = buildRouteLine(markers);
+  const routeData = React.useMemo(() => buildRouteLine(markers), [markers]);
+  const routeLine = routeData.collection;
+  const mainLine = routeData.mainLine;
 
   const movingPoint = React.useMemo(() => {
-    const mainMarkers = markers.filter(m => !m.isAlternate);
-    if (!routeLine || mainMarkers.length < 2 || isNaN(routeProgress)) return null;
-    const segments = mainMarkers.length - 1;
-    let currentSegment = Math.floor(routeProgress * segments);
+    if (!mainLine || isNaN(routeProgress)) return null;
     
-    // Bounds safety checks
-    if (currentSegment < 0) currentSegment = 0;
-    if (currentSegment >= segments) currentSegment = segments - 1;
+    // Calculate position along the continuous great circle
+    const totalLength = length(mainLine);
+    const distance = totalLength * routeProgress;
+    const pt = along(mainLine, distance);
     
-    const segmentProgress = (routeProgress * segments) - currentSegment;
-    
-    const m1 = mainMarkers[currentSegment];
-    const m2 = mainMarkers[currentSegment + 1];
-    
-    if (!m1 || !m2) return null; // Final safety net
-    
-    const p1 = m1.coordinates;
-    const p2 = m2.coordinates;
-    
-    const lon = p1[0] + (p2[0] - p1[0]) * segmentProgress;
-    const lat = p1[1] + (p2[1] - p1[1]) * segmentProgress;
-    
-    // Bearing calculation for rotation
-    const toRad = Math.PI / 180;
-    const toDeg = 180 / Math.PI;
-    const dLon = (p2[0] - p1[0]) * toRad;
-    const lat1 = p1[1] * toRad;
-    const lat2 = p2[1] * toRad;
-    const y = Math.sin(dLon) * Math.cos(lat2);
-    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
-    const bearing = Math.atan2(y, x) * toDeg;
+    // Calculate bearing for plane rotation
+    // We get a point slightly ahead to find the heading
+    const lookAheadDist = Math.min(distance + 1, totalLength);
+    const lookAheadPt = along(mainLine, lookAheadDist);
+    let planeBearing = bearing(pt, lookAheadPt);
     
     return {
       type: "Feature" as const,
-      properties: { bearing },
-      geometry: { type: "Point" as const, coordinates: [lon, lat] },
+      properties: { bearing: planeBearing },
+      geometry: { type: "Point" as const, coordinates: pt.geometry.coordinates },
     };
-  }, [routeProgress, markers, routeLine]);
+  }, [routeProgress, mainLine]);
 
   const sigmetGeoJSON = React.useMemo(() => {
     if (!hazards || hazards.length === 0) return null;
