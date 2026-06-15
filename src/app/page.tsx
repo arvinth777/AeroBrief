@@ -716,6 +716,7 @@ export default function Page() {
   const airportList = Object.values(state.airports);
   const isStale = staleMinutes >= 15;
   const hasData = airportList.length > 0;
+  const isLandingPage = !hasData && !state.isLoading;
 
   const markers = airportList.map((apt) => ({
     icao: apt.icao,
@@ -727,7 +728,42 @@ export default function Page() {
   }));
 
   return (
-    <div className="flex flex-col h-screen bg-[#050505] text-[#e2e2e2] overflow-hidden">
+    <div className="h-dvh bg-[#050505] text-[#eee] flex flex-col font-sans overflow-hidden relative">
+      <AnimatePresence>
+        {isLandingPage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, scale: 0.95, filter: "blur(10px)" }}
+            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+            className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm pointer-events-auto"
+          >
+            <div className="flex flex-col items-center gap-8 w-full max-w-2xl px-6">
+              <div className="flex flex-col items-center text-center gap-4">
+                <h1 className="text-4xl md:text-6xl font-bold tracking-[0.2em] text-transparent bg-clip-text bg-gradient-to-b from-[#fff] to-[#888]">
+                  AEROBRIEF <span className="text-[#4b8ef5]">//</span> OPS
+                </h1>
+                <p className="text-[#aaa] text-sm md:text-base tracking-wider max-w-md">
+                  Global Aviation Weather & AI Dispatch Dashboard. Enter your route and aircraft to begin.
+                </p>
+              </div>
+
+              <div className="flex flex-col md:flex-row items-center gap-4 w-full justify-center bg-[#0a0a0a]/80 p-6 rounded-2xl border border-[#333] shadow-2xl backdrop-blur-xl">
+                <AircraftSelector 
+                  value={selectedAircraft}
+                  onChange={setSelectedAircraft}
+                />
+                <div className="h-px w-full md:w-px md:h-12 bg-[#333] shrink-0" />
+                <RouteInput
+                  onSubmit={(apts, alts) => fetchBriefing(apts, alts, selectedAircraft)}
+                  isLoading={state.isLoading}
+                  recentRoutes={state.recentRoutes}
+                />
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Stale Data Banner ─────────────────────────────────────── */}
       <AnimatePresence>
@@ -777,7 +813,7 @@ export default function Page() {
             initial={shouldReduceMotion ? {} : { height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="w-full bg-[#0c1f3d] text-[#4b8ef5] text-[10px] font-bold py-2 px-6 flex items-center gap-3 tracking-[0.15em] border-b border-[#4b8ef5]/20 shrink-0"
+            className="w-full bg-[#0c1f3d] text-[#4b8ef5] text-[10px] font-bold py-2 px-6 flex items-center gap-3 tracking-[0.15em] border-b border-[#4b8ef5]/20 shrink-0 z-30 relative"
           >
             <Info size={11} />
             DEMO MODE ACTIVE — DISPLAYING SAMPLE DATA
@@ -786,120 +822,151 @@ export default function Page() {
       </AnimatePresence>
 
       {/* ── Header ─────────────────────────────────────────────────── */}
-      <header className="flex flex-col md:flex-row items-center justify-between py-3.5 px-6 border-b border-[#1a1a1a] bg-[#050505] shrink-0 gap-3">
-        <div className="w-full md:w-1/4">
-          <span className="text-[#888] font-bold tracking-[0.25em] text-[11px]">AEROBRIEF // OPS</span>
-        </div>
+      <AnimatePresence>
+        {!isLandingPage && (
+          <motion.header 
+            initial={{ y: -50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className="flex flex-col md:flex-row items-center justify-between py-3.5 px-6 border-b border-[#1a1a1a] bg-[#050505] shrink-0 gap-3 z-30 relative"
+          >
+            <div className="w-full md:w-1/4">
+              <span className="text-[#888] font-bold tracking-[0.25em] text-[11px]">AEROBRIEF // OPS</span>
+            </div>
 
-        <div className="w-full md:w-1/2 flex flex-col md:flex-row justify-center items-stretch md:items-center gap-3">
-          <AircraftSelector 
-            value={selectedAircraft}
-            onChange={setSelectedAircraft}
-          />
-          <RouteInput
-            onSubmit={(apts, alts) => fetchBriefing(apts, alts, selectedAircraft)}
-            isLoading={state.isLoading}
-            recentRoutes={state.recentRoutes}
-          />
-        </div>
+            <div className="w-full md:w-1/2 flex flex-col md:flex-row justify-center items-stretch md:items-center gap-3">
+              <AircraftSelector 
+                value={selectedAircraft}
+                onChange={setSelectedAircraft}
+              />
+              <RouteInput
+                onSubmit={(apts, alts) => fetchBriefing(apts, alts, selectedAircraft)}
+                isLoading={state.isLoading}
+                recentRoutes={state.recentRoutes}
+              />
+            </div>
 
-        <div className="w-full md:w-1/4 flex justify-end">
-          <div className="bg-transparent border border-[#1a1a1a] rounded-md px-4 py-2 flex items-center gap-2.5">
-            <div className={`w-1.5 h-1.5 rounded-full ${state.isLoading ? "bg-amber-500 animate-pulse" : "bg-[#2ebd6b]"}`} />
-            <span className="text-[#666] text-[9px] font-bold tracking-[0.15em]">
-              {state.isLoading ? "PROCESSING..." : "SYSTEM NOMINAL"}
-            </span>
-          </div>
-        </div>
-      </header>
+            <div className="w-full md:w-1/4 flex justify-end">
+              <div className="bg-transparent border border-[#1a1a1a] rounded-md px-4 py-2 flex items-center gap-2.5">
+                <div className={`w-1.5 h-1.5 rounded-full ${state.isLoading ? "bg-amber-500 animate-pulse" : "bg-[#2ebd6b]"}`} />
+                <span className="text-[#666] text-[9px] font-bold tracking-[0.15em]">
+                  {state.isLoading ? "PROCESSING..." : "SYSTEM NOMINAL"}
+                </span>
+              </div>
+            </div>
+          </motion.header>
+        )}
+      </AnimatePresence>
 
       {/* ── Main Grid ──────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col lg:grid lg:grid-cols-12 gap-5 p-5 min-h-0 overflow-y-auto lg:overflow-hidden">
+      <div className="flex-1 flex flex-col lg:grid lg:grid-cols-12 gap-5 p-5 min-h-0 overflow-y-auto lg:overflow-hidden relative z-10">
 
-        {/* Map (Mobile top 45dvh, Desktop middle 6 cols) */}
-        <div className="order-1 lg:order-2 lg:col-span-6 flex flex-col min-h-[45dvh] lg:min-h-0 relative shrink-0">
-          <div className="flex-1 rounded-xl border border-[#1a1a1a] overflow-hidden relative min-h-0">
-            <AeroBriefMapDynamic
-              markers={markers}
-              hazards={state.hazards}
-              pireps={state.pireps}
-              showRadar={state.mapLayers.radar}
-              showSigmets={state.mapLayers.sigmets}
-              showPireps={state.mapLayers.pireps}
-              showFlights={state.mapLayers.flights}
-              activeAirport={state.activeAirport}
-              onMarkerClick={(icao) => dispatch({ type: "SET_ACTIVE_AIRPORT", payload: icao })}
-            />
+        {/* Map */}
+        <motion.div 
+          layout
+          className={
+            isLandingPage 
+              ? "absolute inset-0 z-0 pointer-events-none" 
+              : "order-1 lg:order-2 lg:col-span-6 flex flex-col min-h-[45dvh] lg:min-h-0 relative shrink-0 z-10"
+          }
+        >
+          <div className={`flex-1 relative min-h-0 ${isLandingPage ? "opacity-50" : "rounded-xl border border-[#1a1a1a] overflow-hidden"}`}>
+            <div className={`${isLandingPage ? "pointer-events-none" : "pointer-events-auto"} w-full h-full`}>
+              <AeroBriefMapDynamic
+                markers={markers}
+                hazards={state.hazards}
+                pireps={state.pireps}
+                showRadar={state.mapLayers.radar}
+                showSigmets={state.mapLayers.sigmets}
+                showPireps={state.mapLayers.pireps}
+                showFlights={state.mapLayers.flights}
+                activeAirport={state.activeAirport}
+                onMarkerClick={(icao) => dispatch({ type: "SET_ACTIVE_AIRPORT", payload: icao })}
+              />
+            </div>
 
             {/* Layer Controls - Segmented Pill */}
-            <div className="absolute top-4 right-4 z-10 bg-[#0a0a0a]/80 backdrop-blur-md p-1 border border-[#1a1a1a] rounded-lg flex items-center shadow-lg">
-              {(["radar", "sigmets", "pireps", "flights"] as const).map((layer) => (
-                <button
-                  key={layer}
-                  onClick={() => dispatch({ type: "TOGGLE_LAYER", payload: layer })}
-                  className={`relative px-4 py-2 rounded-md text-[9px] font-bold tracking-[0.2em] transition-all duration-200 cursor-pointer ${
-                    state.mapLayers[layer]
-                      ? "bg-[#1a1a1a] text-[#eee] border border-white/10"
-                      : "bg-transparent text-[#555] hover:text-[#888] border border-transparent"
-                  }`}
-                >
-                  {layer.toUpperCase()}
-                </button>
-              ))}
-            </div>
+            {!isLandingPage && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="absolute top-4 right-4 z-10 bg-[#0a0a0a]/80 backdrop-blur-md p-1 border border-[#1a1a1a] rounded-lg flex items-center shadow-lg"
+              >
+                {(["radar", "sigmets", "pireps", "flights"] as const).map((layer) => (
+                  <button
+                    key={layer}
+                    onClick={() => dispatch({ type: "TOGGLE_LAYER", payload: layer })}
+                    className={`relative px-4 py-2 rounded-md text-[9px] font-bold tracking-[0.2em] transition-all duration-200 cursor-pointer ${
+                      state.mapLayers[layer]
+                        ? "bg-[#1a1a1a] text-[#eee] border border-white/10"
+                        : "bg-transparent text-[#555] hover:text-[#888] border border-transparent"
+                    }`}
+                  >
+                    {layer.toUpperCase()}
+                  </button>
+                ))}
+              </motion.div>
+            )}
           </div>
-        </div>
+        </motion.div>
 
         {/* Left: Station Cards */}
-        <div className="order-2 lg:order-1 lg:col-span-3 flex flex-col gap-4 lg:overflow-y-auto shrink-0 pb-10 lg:pb-0">
-          <h3 className="text-[#444] text-[10px] font-bold tracking-[0.25em] uppercase pl-1 shrink-0">
-            En-Route Stations
-          </h3>
+        {!isLandingPage && (
+          <motion.div 
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="order-2 lg:order-1 lg:col-span-3 flex flex-col gap-4 lg:overflow-y-auto shrink-0 pb-10 lg:pb-0 z-10"
+          >
+            <h3 className="text-[#444] text-[10px] font-bold tracking-[0.25em] uppercase pl-1 shrink-0">
+              En-Route Stations
+            </h3>
 
-          {state.isLoading ? (
-            <>
-              <SkeletonCard />
-              <SkeletonCard />
-              <SkeletonCard />
-            </>
-          ) : hasData ? (
-            <>
-              {airportList.map((apt, i) => (
-                <StationCard
-                  key={apt.icao}
-                  airport={apt}
-                  index={i}
-                  isActive={apt.icao === state.activeAirport}
-                  isAlternate={state.alternates.includes(apt.icao)}
-                  onClick={() => dispatch({ type: "SET_ACTIVE_AIRPORT", payload: apt.icao })}
-                />
-              ))}
-            </>
-          ) : (
-            <div className="text-[#333] text-[12px] font-mono px-2 pt-4">
-              Awaiting station inputs...
-            </div>
-          )}
-        </div>
+            {state.isLoading ? (
+              <>
+                <SkeletonCard />
+                <SkeletonCard />
+                <SkeletonCard />
+              </>
+            ) : hasData ? (
+              <>
+                {airportList.map((apt, i) => (
+                  <StationCard
+                    key={apt.icao}
+                    airport={apt}
+                    index={i}
+                    isActive={apt.icao === state.activeAirport}
+                    isAlternate={state.alternates.includes(apt.icao)}
+                    onClick={() => dispatch({ type: "SET_ACTIVE_AIRPORT", payload: apt.icao })}
+                  />
+                ))}
+              </>
+            ) : null}
+          </motion.div>
+        )}
 
         {/* Right: AI Insights & TAF */}
-        <div className="order-3 lg:order-3 lg:col-span-3 flex flex-col gap-4 lg:overflow-y-auto shrink-0 pb-10 lg:pb-0">
-          <AIInsights
-            ai={state.ai}
-            isLoading={state.isLoading}
-            onRefresh={handleRefresh}
-          />
-          
-          {/* TAF Timeline for active airport */}
-          {state.activeAirport && state.airports[state.activeAirport] && (
-            <TAFTimeline airport={state.airports[state.activeAirport]} />
-          )}
+        {!isLandingPage && (
+          <motion.div 
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="order-3 lg:order-3 lg:col-span-3 flex flex-col gap-4 lg:overflow-y-auto shrink-0 pb-10 lg:pb-0 z-10"
+          >
+            <AIInsights
+              ai={state.ai}
+              isLoading={state.isLoading}
+              onRefresh={handleRefresh}
+            />
+            
+            {/* TAF Timeline for active airport */}
+            {state.activeAirport && state.airports[state.activeAirport] && (
+              <TAFTimeline airport={state.airports[state.activeAirport]} />
+            )}
 
-          {/* Winds Aloft for active airport */}
-          {state.activeAirport && state.airports[state.activeAirport]?.windsAloft && (
-            <WindsAloftTable levels={state.airports[state.activeAirport].windsAloft.levels} />
-          )}
-        </div>
+            {/* Winds Aloft for active airport */}
+            {state.activeAirport && state.airports[state.activeAirport]?.windsAloft && (
+              <WindsAloftTable levels={state.airports[state.activeAirport].windsAloft.levels} />
+            )}
+          </motion.div>
+        )}
       </div>
     </div>
   );
