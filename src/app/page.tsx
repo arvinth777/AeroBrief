@@ -91,7 +91,7 @@ interface AppState {
 
 type Action =
   | { type: "FETCH_START" }
-  | { type: "FETCH_SUCCESS"; payload: { briefing: { airports: Record<string, AirportData>; hazards: unknown[]; pireps: unknown[]; meta: AppState["meta"] }; ai: AIBriefing; alternates: string[] } }
+  | { type: "FETCH_SUCCESS"; payload: { briefing: { airports: Record<string, AirportData>; hazards: unknown[]; pireps: unknown[]; meta: AppState["meta"] }; ai: AIBriefing; alternates: string[]; route: string[] } }
   | { type: "FETCH_ERROR"; payload: string | null }
   | { type: "SET_ACTIVE_AIRPORT"; payload: string | null }
   | { type: "TOGGLE_LAYER"; payload: keyof AppState["mapLayers"] }
@@ -122,11 +122,12 @@ function reducer(state: AppState, action: Action): AppState {
     case "FETCH_START":
       return { ...state, isLoading: true, error: null };
     case "FETCH_SUCCESS": {
-      const { briefing, ai, alternates } = action.payload;
-      const firstAirport = Object.keys(briefing.airports)[0] ?? null;
+      const { briefing, ai, alternates, route } = action.payload;
+      const firstAirport = route[0] ?? Object.keys(briefing.airports)[0] ?? null;
       return {
         ...state,
         isLoading: false,
+        route: route ?? Object.keys(briefing.airports),
         airports: briefing.airports,
         hazards: briefing.hazards,
         pireps: briefing.pireps,
@@ -207,12 +208,12 @@ export function RouteInput({
   const shouldReduceMotion = useReducedMotion();
 
   useEffect(() => {
-    if (currentRoute.length > 0 || currentAlternates.length > 0) {
-      setTags(currentRoute);
-      setAlts(currentAlternates);
-      setIsAltMode(currentAlternates.length > 0);
-    }
-  }, [currentRoute, currentAlternates]);
+    setTags(currentRoute);
+    setAlts(currentAlternates);
+    setIsAltMode(currentAlternates.length > 0);
+  // Only re-sync when the parent route changes (not on every local interaction)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentRoute.join(","), currentAlternates.join(",")]);
 
   const addTag = useCallback(
     (raw: string) => {
@@ -661,7 +662,17 @@ function AIInsights({ ai, isLoading, onRefresh }: { ai: AIBriefing | null; isLoa
 ══════════════════════════════════════════════════════════════════════ */
 export default function Page() {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const [selectedAircraft, setSelectedAircraft] = useState<string>("");
+  const [selectedAircraft, setSelectedAircraftRaw] = useState<string>(() => {
+    // Rehydrate from localStorage on first render
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("aerobrief_aircraft") ?? "";
+    }
+    return "";
+  });
+  const setSelectedAircraft = useCallback((val: string) => {
+    setSelectedAircraftRaw(val);
+    try { localStorage.setItem("aerobrief_aircraft", val); } catch { /* ignore */ }
+  }, []);
   const shouldReduceMotion = useReducedMotion();
 
   // Hydrate from localStorage
@@ -705,7 +716,7 @@ export default function Page() {
         return;
       }
       const data = await res.json();
-      dispatch({ type: "FETCH_SUCCESS", payload: { ...data, alternates } });
+      dispatch({ type: "FETCH_SUCCESS", payload: { ...data, alternates, route: airports } });
 
       // Persist route
       try {
@@ -857,6 +868,8 @@ export default function Page() {
                 onSubmit={(apts, alts) => fetchBriefing(apts, alts, selectedAircraft)}
                 isLoading={state.isLoading}
                 recentRoutes={state.recentRoutes}
+                currentRoute={state.route}
+                currentAlternates={state.alternates}
               />
             </div>
 

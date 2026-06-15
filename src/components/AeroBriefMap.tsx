@@ -53,20 +53,37 @@ function buildRouteLine(markers: MarkerData[]) {
   
   if (mainMarkers.length >= 2) {
     for (let i = 0; i < mainMarkers.length - 1; i++) {
-      const p1 = point(mainMarkers[i].coordinates);
-      const p2 = point(mainMarkers[i+1].coordinates);
-      const gc = greatCircle(p1, p2, { npoints: 100 });
-      gc.properties = { type: "main" };
-      features.push(gc);
+      const c1 = mainMarkers[i].coordinates;
+      const c2 = mainMarkers[i+1].coordinates;
       
-      const coords = gc.geometry.type === "MultiLineString" 
-        ? gc.geometry.coordinates.flat() 
-        : gc.geometry.coordinates;
-      
-      if (i === 0) {
-        mainCoords.push(...(coords as number[][]));
-      } else {
-        mainCoords.push(...(coords as number[][]).slice(1));
+      // Skip segment if same coords (would crash greatCircle)
+      if (Math.abs(c1[0] - c2[0]) < 0.001 && Math.abs(c1[1] - c2[1]) < 0.001) continue;
+
+      const p1 = point(c1);
+      const p2 = point(c2);
+      try {
+        const gc = greatCircle(p1, p2, { npoints: 100 });
+        gc.properties = { type: "main" };
+        features.push(gc);
+        
+        const coords = gc.geometry.type === "MultiLineString" 
+          ? gc.geometry.coordinates.flat() 
+          : gc.geometry.coordinates;
+        
+        if (mainCoords.length === 0) {
+          mainCoords.push(...(coords as number[][]));
+        } else {
+          mainCoords.push(...(coords as number[][]).slice(1));
+        }
+      } catch (e) {
+        // Fallback: straight line if greatCircle throws (e.g. antipodal points)
+        features.push({
+          type: "Feature",
+          geometry: { type: "LineString", coordinates: [c1, c2] },
+          properties: { type: "main" },
+        });
+        if (mainCoords.length === 0) mainCoords.push(c1, c2);
+        else mainCoords.push(c2);
       }
     }
   }

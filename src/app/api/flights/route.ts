@@ -106,6 +106,9 @@ export async function GET(request: Request) {
     let aviationStackCallsThisRun = 0;
     const MAX_CALLS_PER_RUN = 5;
     const MAX_CALLS_PER_MONTH = 95; // Leave a 5 request safety margin
+    
+    let hexdbCallsThisRun = 0;
+    const MAX_HEXDB_PER_RUN = 20; // Avoid rate-limiting hexdb.io
 
     const liveFlights = [];
 
@@ -175,12 +178,13 @@ export async function GET(request: Request) {
         const cachedAc = cache.aircraft[icao24];
         if (cachedAc && (Date.now() - cachedAc.cached_at) < 24 * 60 * 60 * 1000) {
           aircraftInfo = cachedAc;
-        } else {
+        } else if (hexdbCallsThisRun < MAX_HEXDB_PER_RUN) {
           try {
             const hexRes = await fetch(`https://hexdb.io/hex-data?hex=${icao24}`, {
               headers: { "Accept": "application/json" },
               signal: AbortSignal.timeout(3000),
             });
+            hexdbCallsThisRun++;
             if (hexRes.ok) {
               const hexData = await hexRes.json();
               if (hexData && hexData.Registration) {
