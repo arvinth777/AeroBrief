@@ -399,6 +399,18 @@ export default function AeroBriefMap({
     };
   }, [pireps]);
 
+  const flightsGeoJSON = React.useMemo(() => {
+    if (!liveFlights || liveFlights.length === 0) return null;
+    return {
+      type: "FeatureCollection" as const,
+      features: liveFlights.map(f => ({
+        type: "Feature" as const,
+        geometry: { type: "Point" as const, coordinates: [f.longitude, f.latitude] },
+        properties: { ...f }
+      })),
+    };
+  }, [liveFlights]);
+
   return (
     <div className="w-full h-full relative">
       <Map
@@ -407,17 +419,46 @@ export default function AeroBriefMap({
         mapStyle={MAP_STYLE}
         attributionControl={false}
         maxZoom={14}
-        onLoad={() => setMapLoaded(true)}
+        onLoad={(e) => {
+          setMapLoaded(true);
+          const map = e.target;
+          const img = new Image(64, 64);
+          img.onload = () => {
+            if (!map.hasImage('airplane-icon')) {
+              map.addImage('airplane-icon', img, { sdf: true });
+            }
+          };
+          img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="black">
+              <path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.2-1.1.5l-1.3 1.3c-.3.3-.2.8.2 1.1L8 12l-4 4-2.8-.7c-.3-.1-.6 0-.8.2L0 16l4.5 2L6 24l.5-.4c.2-.2.3-.5.2-.8L6 20l4-4 2.8 5.4c.3.4.8.5 1.1.2l1.3-1.3c.3-.2.6-.6.5-1.1z"/>
+            </svg>
+          `);
+        }}
         onZoom={(e) => setCurrentZoom(e.viewState.zoom)}
         onClick={(e: any) => {
           const feature = e.features && e.features[0];
-          if (feature && (feature.layer.id === "sigmets-fill" || feature.layer.id === "pireps-point")) {
-            setHoverInfo({ x: e.lngLat.lng, y: e.lngLat.lat, feature: feature.properties });
-          } else {
-            setHoverInfo(null);
+          if (feature) {
+            if (feature.layer.id === "flights-layer") {
+              const flightData = feature.properties;
+              if (flightData.metadata && typeof flightData.metadata === 'string') {
+                try { flightData.metadata = JSON.parse(flightData.metadata); } catch(e){}
+              }
+              if (flightData.aircraftInfo && typeof flightData.aircraftInfo === 'string') {
+                try { flightData.aircraftInfo = JSON.parse(flightData.aircraftInfo); } catch(e){}
+              }
+              if (onFlightClick) onFlightClick(flightData);
+              return;
+            } else if (feature.layer.id === "sigmets-fill" || feature.layer.id === "pireps-point") {
+              setHoverInfo({ x: e.lngLat.lng, y: e.lngLat.lat, feature: feature.properties });
+              return;
+            }
           }
+          setHoverInfo(null);
         }}
-        interactiveLayerIds={(showSigmets || showPireps) ? ["sigmets-fill", "pireps-point"] : []}
+        interactiveLayerIds={[
+          ...(showSigmets || showPireps ? ["sigmets-fill", "pireps-point"] : []),
+          ...(showFlights ? ["flights-layer"] : [])
+        ]}
         style={{ width: "100%", height: "100%" }}
       >
         {/* Radar layer */}
@@ -614,24 +655,29 @@ export default function AeroBriefMap({
           );
         })()}
 
-        {/* Flight Markers */}
-        {showFlights && liveFlights.map((flight) => (
-          <Marker
-            key={flight.icao24}
-            longitude={flight.longitude}
-            latitude={flight.latitude}
-            onClick={(e) => {
-              e.originalEvent.stopPropagation();
-              if (onFlightClick) onFlightClick(flight);
-              else setHoveredFlight(hoveredFlight?.icao24 === flight.icao24 ? null : flight);
-            }}
-            style={{ zIndex: hoveredFlight?.icao24 === flight.icao24 ? 40 : 10 }}
-          >
-            <div className="relative group cursor-pointer" style={{ transform: `rotate(${flight.heading ?? 0}deg)` }}>
-              <Plane size={16} className="text-yellow-400 fill-yellow-400 drop-shadow-md" />
-            </div>
-          </Marker>
-        ))}
+        {/* Native Mapbox Flight Layer */}
+        {showFlights && flightsGeoJSON && (
+          <Source id="live-flights" type="geojson" data={flightsGeoJSON}>
+            <Layer
+              id="flights-layer"
+              type="symbol"
+              layout={{
+                "icon-image": "airplane-icon",
+                "icon-size": 0.35,
+                "icon-rotate": ["get", "heading"],
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true,
+                "icon-rotation-alignment": "map",
+                "icon-pitch-alignment": "map",
+              }}
+              paint={{
+                "icon-color": "#fbbc05",
+                "icon-halo-color": "#111111",
+                "icon-halo-width": 1.5,
+              }}
+            />
+          </Source>
+        )}
 
         {/* Flight Popup */}
         {showFlights && hoveredFlight && (() => {
