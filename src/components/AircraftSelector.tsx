@@ -50,8 +50,18 @@ export function AircraftSelector({ value, onChange }: Props) {
                 <span className="text-[9px] text-[#888] truncate w-full">{selectedProfile.name}</span>
               </div>
             </>
+          ) : value === "Other" ? (
+            <>
+              <div className="w-8 h-8 rounded-sm bg-[#050505] flex items-center justify-center shrink-0 border border-[#333]">
+                <Plane size={16} className="text-[#666]" />
+              </div>
+              <div className="flex flex-col items-start truncate">
+                <span className="text-[11px] font-bold tracking-widest text-[#f5f5f5]">OTHER</span>
+                <span className="text-[9px] text-[#888] truncate w-full">Generic Airframe</span>
+              </div>
+            </>
           ) : (
-            <span className="text-[11px] font-mono">Select Aircraft</span>
+            <span className="text-[11px] font-mono text-[#888]">Select Aircraft...</span>
           )}
         </div>
         <ChevronDown size={14} className={`text-[#666] transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
@@ -99,6 +109,43 @@ export function AircraftSelector({ value, onChange }: Props) {
                   </div>
                 </button>
               ))}
+
+              <button
+                onClick={() => {
+                  onChange("Other");
+                  setIsOpen(false);
+                }}
+                className={`w-full flex items-center gap-3 p-2 rounded-md transition-colors ${
+                  value === "Other" ? "bg-[#1a1a1a] border border-[#333]" : "hover:bg-[#111] border border-transparent"
+                }`}
+              >
+                <div className="w-12 h-12 rounded bg-[#050505] flex items-center justify-center shrink-0 border border-[#222]">
+                  <Plane size={20} className="text-[#555]" />
+                </div>
+                <div className="flex flex-col items-start flex-1 text-left">
+                  <span className={`text-[12px] font-bold tracking-widest ${value === "Other" ? "text-[#4b8ef5]" : "text-[#ddd]"}`}>
+                    OTHER
+                  </span>
+                  <span className="text-[10px] text-[#888]">Generic Airframe</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  onChange("");
+                  setIsOpen(false);
+                }}
+                className={`w-full flex items-center gap-3 p-2 rounded-md transition-colors mt-2 border-t border-[#1a1a1a] pt-3 ${
+                  value === "" ? "bg-[#1a1a1a] border border-[#333]" : "hover:bg-[#111] border border-transparent"
+                }`}
+              >
+                <div className="flex flex-col items-start flex-1 text-left pl-2">
+                  <span className={`text-[12px] font-bold tracking-widest ${value === "" ? "text-[#4b8ef5]" : "text-[#888]"}`}>
+                    NONE
+                  </span>
+                  <span className="text-[10px] text-[#555]">Clear Selection</span>
+                </div>
+              </button>
             </div>
           </motion.div>
         )}

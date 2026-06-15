@@ -649,7 +649,7 @@ function AIInsights({ ai, isLoading, onRefresh }: { ai: AIBriefing | null; isLoa
 ══════════════════════════════════════════════════════════════════════ */
 export default function Page() {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const [selectedAircraft, setSelectedAircraft] = useState<string>("SR22");
+  const [selectedAircraft, setSelectedAircraft] = useState<string>("");
   const shouldReduceMotion = useReducedMotion();
 
   // Hydrate from localStorage

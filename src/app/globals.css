@@ -84,3 +84,21 @@
 .maplibregl-ctrl-attrib,
 .mapboxgl-ctrl-logo,
 .mapboxgl-ctrl-attrib { display: none !important; }
+
+/* ── Popup Overrides for Dark Mode ───────────────────────────────── */
+.maplibregl-popup-content,
+.mapboxgl-popup-content {
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.mapboxgl-popup-anchor-bottom .mapboxgl-popup-tip {
+  border-top-color: #1a1a1a !important;
+}
+
+.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.mapboxgl-popup-anchor-top .mapboxgl-popup-tip {
+  border-bottom-color: #1a1a1a !important;
+}
