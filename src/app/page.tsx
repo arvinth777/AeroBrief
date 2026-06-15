@@ -619,9 +619,10 @@ function AIInsights({ ai, isLoading, onRefresh }: { ai: AIBriefing | null; isLoa
           <motion.button
             whileTap={{ scale: 0.96 }}
             onClick={onRefresh}
-            className="w-full bg-[#f5f5f5] text-[#0a0a0a] hover:bg-white font-bold text-[13px] py-3.5 rounded-md mt-auto transition-colors cursor-pointer"
+            className="w-full flex items-center justify-center gap-2 bg-[#f5f5f5] text-[#0a0a0a] hover:bg-white font-bold text-[13px] py-3.5 rounded-md mt-auto transition-colors cursor-pointer"
           >
-            Generate Full Flight Log
+            <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
+            {isLoading ? "Refreshing..." : "Refresh Dispatch Briefing"}
           </motion.button>
         </>
       ) : (
