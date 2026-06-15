@@ -346,9 +346,14 @@ export default function AeroBriefMap({
       if (!totalLength || isNaN(totalLength) || totalLength === 0) return null;
       
       const distance = totalLength * routeProgress;
-      if (isNaN(distance)) return null;
+      if (isNaN(distance) || distance < 0 || distance > totalLength) return null;
       
-      const pt = along(mainLine, distance);
+      let pt;
+      try {
+        pt = along(mainLine, distance);
+      } catch (e) {
+        return null;
+      }
       
       // Calculate bearing for plane rotation
       // We get a point slightly ahead to find the heading
@@ -457,6 +462,7 @@ export default function AeroBriefMap({
               if (flightData.aircraftInfo && typeof flightData.aircraftInfo === 'string') {
                 try { flightData.aircraftInfo = JSON.parse(flightData.aircraftInfo); } catch(e){}
               }
+              console.log("Map clicked flight:", flightData);
               if (onFlightClick) onFlightClick(flightData);
               return;
             } else if (feature.layer.id === "sigmets-fill" || feature.layer.id === "pireps-point") {
