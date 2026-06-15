@@ -87,14 +87,15 @@ export async function GET(request: Request) {
       osHeaders['Authorization'] = `Basic ${auth}`;
     }
 
-    const airLabsKey = process.env.AIRLABS_API_KEY || "e51e1ae1-c20c-43ce-9343-da0113a40d00";
-    const airLabsUrl = `https://airlabs.co/api/v9/flights?api_key=${airLabsKey}&bbox=${minLat},${minLon},${maxLat},${maxLon}`;
+    const airLabsKey = process.env.AIRLABS_API_KEY;
+    const airLabsUrl = airLabsKey ? `https://airlabs.co/api/v9/flights?api_key=${airLabsKey}&bbox=${minLat},${minLon},${maxLat},${maxLon}` : null;
 
     const osPromise = fetch(openSkyUrl, { headers: osHeaders, signal: AbortSignal.timeout(6000) })
       .then(r => r.ok ? r.json() : Promise.reject(`OpenSky HTTP ${r.status}`));
       
-    const alPromise = fetch(airLabsUrl, { signal: AbortSignal.timeout(6000) })
-      .then(r => r.ok ? r.json() : Promise.reject(`AirLabs HTTP ${r.status}`));
+    const alPromise = airLabsUrl 
+      ? fetch(airLabsUrl, { signal: AbortSignal.timeout(6000) }).then(r => r.ok ? r.json() : Promise.reject(`AirLabs HTTP ${r.status}`))
+      : Promise.resolve({ response: [] });
 
     const [osResult, alResult] = await Promise.allSettled([osPromise, alPromise]);
 
