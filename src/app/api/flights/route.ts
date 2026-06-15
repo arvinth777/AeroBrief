@@ -170,21 +170,31 @@ export async function GET(request: Request) {
             cache.apiCallsThisMonth < MAX_CALLS_PER_MONTH
           ) {
             try {
-              const asRes = await fetch(`http://api.aviationstack.com/v1/flights?access_key=${AVIATIONSTACK_KEY}&flight_iata=${callsign}`);
+              const asRes = await fetch(`http://api.aviationstack.com/v1/flights?access_key=${AVIATIONSTACK_KEY}&flight_icao=${callsign}`);
               if (asRes.ok) {
                 const asData = await asRes.json();
                 if (asData.data && asData.data.length > 0) {
                   const flight = asData.data[0];
                   metadata = {
-                    airline: flight.airline?.name || "Unknown Airline",
+                    airline: flight.airline?.name || flight.airline?.icao || "Unknown Airline",
                     departure_airport: flight.departure?.iata || flight.departure?.icao || "Unknown",
                     arrival_airport: flight.arrival?.iata || flight.arrival?.icao || "Unknown",
                     scheduled_departure: flight.departure?.scheduled || "",
                     scheduled_arrival: flight.arrival?.scheduled || "",
                     cached_at: Date.now(),
                   };
-                  cache.metadata[callsign] = metadata;
+                } else {
+                  // Cache the miss so we don't keep hitting the API
+                  metadata = {
+                    airline: "Unknown Airline",
+                    departure_airport: "Unknown",
+                    arrival_airport: "Unknown",
+                    scheduled_departure: "",
+                    scheduled_arrival: "",
+                    cached_at: Date.now(),
+                  };
                 }
+                cache.metadata[callsign] = metadata;
               }
             } catch (err) { /* ignore */ }
             aviationStackCallsThisRun++;
@@ -207,7 +217,7 @@ export async function GET(request: Request) {
               hexdbCallsThisRun++;
               if (hexRes.ok) {
                 const hexData = await hexRes.json();
-                if (hexData && hexData.Registration) {
+                if (hexData && (hexData.Registration || hexData.Type)) {
                   aircraftInfo = {
                     registration: hexData.Registration || "",
                     typeCode: hexData.ICAOTypeCode || "",
@@ -216,8 +226,18 @@ export async function GET(request: Request) {
                     owner: hexData.RegisteredOwners || hexData.Operator || "",
                     cached_at: Date.now(),
                   };
-                  cache.aircraft[icao24] = aircraftInfo;
+                } else {
+                  // Cache the miss so we don't repeatedly query HexDB for unknown hex codes
+                  aircraftInfo = {
+                    registration: "N/A",
+                    typeCode: "Unknown Type",
+                    model: "Unknown",
+                    manufacturer: "Unknown",
+                    owner: "Unknown Operator",
+                    cached_at: Date.now(),
+                  };
                 }
+                cache.aircraft[icao24] = aircraftInfo;
               }
             } catch (err) { /* ignore */ }
           }

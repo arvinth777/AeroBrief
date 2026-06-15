@@ -14,8 +14,8 @@ import { WindsAloftTable } from "@/components/WindsAloftTable";
 import { AIRCRAFT_PROFILES } from "@/lib/aircraftProfiles";
 import { springs } from "@/lib/springs";
 import { AIRPORT_COORDS } from "@/lib/airports";
+import { FlightDetailsPanel } from "@/components/FlightDetailsPanel";
 const AircraftSelector = dynamic(() => import("@/components/AircraftSelector").then(mod => mod.AircraftSelector), { ssr: false });
-const FlightDetailsPanel = dynamic(() => import("@/components/FlightDetailsPanel").then(mod => mod.FlightDetailsPanel), { ssr: false });
 
 // Lazy-load the heavy Mapbox bundle
 const AeroBriefMapDynamic = dynamic(() => import("@/components/AeroBriefMap"), {
