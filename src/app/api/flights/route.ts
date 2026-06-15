@@ -37,6 +37,11 @@ function loadCache(): CacheData {
   try {
     if (fs.existsSync(CACHE_FILE)) {
       const data = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf-8')) as CacheData;
+      
+      // Initialize missing properties for backward compatibility with older cache files
+      if (!data.metadata) data.metadata = {};
+      if (!data.aircraft) data.aircraft = {};
+
       // Reset counter if month changed
       if (data.currentMonthStr !== currentMonthStr) {
         data.apiCallsThisMonth = 0;
