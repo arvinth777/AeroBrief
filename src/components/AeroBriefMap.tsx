@@ -59,10 +59,14 @@ function buildRouteLine(markers: MarkerData[]) {
       gc.properties = { type: "main" };
       features.push(gc);
       
+      const coords = gc.geometry.type === "MultiLineString" 
+        ? gc.geometry.coordinates.flat() 
+        : gc.geometry.coordinates;
+      
       if (i === 0) {
-        mainCoords.push(...(gc.geometry.coordinates as number[][]));
+        mainCoords.push(...(coords as number[][]));
       } else {
-        mainCoords.push(...(gc.geometry.coordinates as number[][]).slice(1));
+        mainCoords.push(...(coords as number[][]).slice(1));
       }
     }
   }
@@ -268,6 +272,8 @@ export default function AeroBriefMap({
     
     // Calculate position along the continuous great circle
     const totalLength = length(mainLine);
+    if (totalLength === 0) return null;
+    
     const distance = totalLength * routeProgress;
     const pt = along(mainLine, distance);
     
