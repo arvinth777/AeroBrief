@@ -57,7 +57,7 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to launch the dashboard. Enter your route (e.g., `KLAX / KSAN`), select your aircraft, and click **BRIEF**.
+
 
 ## 📝 Disclaimer
 
